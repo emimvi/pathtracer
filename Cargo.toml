@@ -4,3 +4,10 @@ version = "0.1.0"
 authors = ["Emil Imbert Villumsen <emimvi@gmail.com>"]
 
 [dependencies]
+rand = "0.4"
+rayon = "1.0.1"
+tobj = "0.1.6"
+image = "*"
+
+[profile.release]
+debug = true

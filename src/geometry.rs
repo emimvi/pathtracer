@@ -1,7 +1,7 @@
 
 use std::f64;
 use vec3::*;
-use texture::*;
+use mipmap::*;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Ray {pub origin : Vec3,
@@ -9,10 +9,10 @@ pub struct Ray {pub origin : Vec3,
                 pub t_min : f64,
                 pub t_max : f64,
                 pub trace_depth : u8,
-                pub rx_origin: Vec3,
+                pub rx_origin: Vec3, //Differentials
                 pub ry_origin: Vec3,
                 pub rx_direction:  Vec3,
-                pub ry_direction:  Vec3,
+                pub ry_direction:  Vec3, 
                 }
 
 impl Ray {
@@ -30,19 +30,79 @@ impl Ray {
         }
     }
 
-    pub fn scale_differentials(&mut self, scale_factor : f64) {
-            self.rx_origin    =  self.origin + (self.rx_origin - self.origin) * scale_factor; 
-            self.ry_origin    =  self.origin + (self.ry_origin - self.origin) * scale_factor; 
-            self.rx_direction =  self.direction + (self.rx_direction - self.direction) * scale_factor;
-            self.ry_direction =  self.direction + (self.ry_direction - self.direction) * scale_factor;
-    }
+    //pub fn scale_differentials(&mut self, scale_factor : f64) {
+    //        self.rx_origin    =  self.origin + (self.rx_origin - self.origin) * scale_factor; 
+    //        self.ry_origin    =  self.origin + (self.ry_origin - self.origin) * scale_factor; 
+    //        self.rx_direction =  self.direction + (self.rx_direction - self.direction) * scale_factor;
+    //        self.ry_direction =  self.direction + (self.ry_direction - self.direction) * scale_factor;
+    //}
 }
 
 #[derive(Debug, Clone)]
 pub struct Surface<'a> { pub position : Vec3,
-                     pub normal: Vec3,
-                     pub material :  &'a Material,
-                     pub uv : (f64, f64) }
+                         pub normal: Vec3,
+                         pub material :  &'a Material,
+                         pub uv : Vec2,
+                         pub dpdu : Vec3,
+                         pub dpdv : Vec3,
+                         pub dpdx : Vec3,
+                         pub dpdy : Vec3,
+                         pub dudx : f64,
+                         pub dudy : f64,
+                         pub dvdx : f64,
+                         pub dvdy : f64,
+                        }
+impl<'a> Surface<'a> {
+    pub fn new(position : Vec3, normal : Vec3, material : &'a Material) -> Surface<'a> {
+        Surface { position, 
+                  normal, 
+                  material,
+                  uv : Vec2::from([0., 0.]),
+                  dpdu : Vec3::zero(),
+                  dpdv : Vec3::zero(),
+                  dpdx : Vec3::zero(),
+                  dpdy : Vec3::zero(),
+                  dudx : 0.,
+                  dudy : 0.,
+                  dvdx : 0.,
+                  dvdy : 0.
+        }
+    }
+
+   pub fn calculate_differentials(&mut self, ray : &Ray) {
+        //pbrt. Chapter 10, p601
+        let d = self.normal.dot(self.position);
+
+        //Distance of the dx ray to the surface
+        let tx = (-self.normal.dot(ray.rx_origin) - d) / self.normal.dot(ray.rx_direction);
+        let px = ray.rx_origin + tx * ray.rx_direction;
+
+        let ty = (-self.normal.dot(ray.ry_origin) - d) / self.normal.dot(ray.ry_direction);
+        let py = ray.ry_origin + ty * ray.ry_direction;
+
+        self.dpdx = px - self.position;
+        self.dpdy = py - self.position;
+
+        let dim = if f64::abs(self.normal.x) > f64::abs(self.normal.y) && f64::abs(self.normal.x) > f64::abs(self.normal.z) {
+            (1,2)
+        } else if f64::abs(self.normal.y) > f64::abs(self.normal.z) {
+            (0,2)
+        } else {
+            (0,1)
+        };
+
+        let A = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
+                  [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
+        let Bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
+        let By = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
+        let (dudx, dvdx) = solve_linear_system_2x2(A, Bx);
+        self.dudx = dudx;
+        self.dvdx = dvdx;
+        let (dudy, dvdy) = solve_linear_system_2x2(A, By);
+        self.dudy = dudy;
+        self.dvdy = dvdy;
+   }
+}
 
 #[derive(Debug, Clone)]
 pub struct Sphere {pub center : Vec3, pub radius : f64, pub material : Material  }
@@ -56,7 +116,7 @@ pub struct Material {
     pub diffuse: Vec3,
     pub specular: Vec3,
     pub illumination_model: Option<IlluminationModel>,
-    pub texture : Option<Texture>
+    pub texture : Option<MipMap>
 }
 
 impl Material {
@@ -69,11 +129,22 @@ impl Material {
         }
     }
 
-    pub fn get_diffuse(&self, uv : &(f64, f64)) -> Vec3 {
+    pub fn get_diffuse(&self, surface : &Surface) -> Vec3 {
+        let st = surface.uv;
+        //compute texture differentials
+        let dstdx = [surface.dudx, surface.dvdx];
+        let dstdy = [surface.dudy, surface.dvdy];
+
+        let width = f64::max(f64::max(f64::abs(dstdx[0]),
+                                      f64::abs(dstdx[1])),
+                             f64::max(f64::abs(dstdy[0]),
+                                      f64::abs(dstdy[1])));
+
         if let Some(tex) = &self.texture {
-            return tex.sample_nearest(uv.0, uv.1)
+            tex.sample_nearest(st[0], st[1], width/1024.)
+        } else {
+            self.diffuse
         }
-        self.diffuse
     }
 
     pub fn create_mirror() -> Material {
@@ -136,11 +207,9 @@ impl Intersectable for Plane {
         if t > ray.t_max || t < ray.t_min { return None }
 
         ray.t_max = t;
-        let surface = Surface { position: ray.origin + ray.direction*t, 
-                                normal : self.normal, 
-                                material : &self.material,
-                                uv : (0., 0.)
-        } ;
+        let surface = Surface::new(ray.origin + ray.direction*t, 
+                                self.normal, 
+                                &self.material);
         Some(surface)
     }
 }
@@ -168,10 +237,20 @@ impl Intersectable for Sphere {
         ray.t_max = t;
         let hit_position = ray.origin + ray.direction*t;
         let normal = (hit_position - self.center).normalize();
-        Some(Surface{position : hit_position,
-                     normal: normal,
-                     material : &self.material,
-                     uv : (0., 0.)
-        })
+        Some(Surface::new(hit_position, normal, &self.material))
     }
+}
+
+
+fn solve_linear_system_2x2(A : [[f64;2];2], B : [f64;2]) -> (f64,f64)  {
+       let det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+       if f64::abs(det) < 1e-10 {
+           return (0.,0.);
+       }
+       let x0 = (A[1][1] * B[0] - A[0][1] * B[1]) / det;
+       let x1 = (A[0][0] * B[1] - A[1][0] * B[0]) / det;
+       if f64::is_nan(x0) || f64::is_nan(x1) {
+           return (0.,0.);
+       }
+       (x0, x1)
 }

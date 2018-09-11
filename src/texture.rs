@@ -2,47 +2,32 @@ use image;
 use image::GenericImage;
 use std::path::Path;
 use vec3::Vec3;
+use std::ops::*;
+use mipmap::*;
+
+pub enum ImageWrap {
+    Repeat, Black, Clamp
+}
 
 #[derive(Debug, Clone)]
 pub struct Texture {
-    data : Vec<[f64 ; 4]>,
-    height : usize,
-    width : usize,
+    mipmap : MipMap
 }
 
 impl Texture {
 
-    pub fn load(file_name : &Path) -> Texture {
-        let img = image::open(file_name).expect(&format!("Couldn't find file: {}", file_name.display()));
-        let img_data : Vec<f64> = img.raw_pixels().iter().map(|&pixel| pixel as f64/255.).collect();
-        let mut vec4 = Vec::new();
-        for chunk in img_data.chunks(4) {
-            vec4.push([chunk[0], chunk[1], chunk[2], chunk[3]]); 
-        }
-        Texture {
-            data : vec4,
-            height : img.height() as usize,
-            width : img.width() as usize,
-        }
-    }
 
-    pub fn sample_nearest(&self, u: f64, v: f64) -> Vec3 {
-        let u = u - f64::floor(u);
-        let v = v - f64::floor(v);
 
-        let mut u_int = (u*self.width  as f64 + 0.5)  as usize;
-        let mut v_int = (v*self.height as f64 + 0.5) as usize;
-        if u_int == self.width {
-            u_int =  0;
-        }
-        if v_int == self.height {
-            v_int =  0;
-        }
-        let idx = u_int + (self.height - v_int - 1)*self.width;
-        let color = self.data[idx];
+}
 
-        Vec3::new(color[0],color[1],color[2])
-    }
+fn log2_int(num : usize) -> usize {
+    let mut num = num;
+    let mut targetlevel = 0;
+    while (num >= 1) {
+        targetlevel += 1;
+        num = num >> 1;
+    };
+    targetlevel
 }
 
 pub fn test() {

@@ -10,11 +10,11 @@ pub struct Vec3 {
 
 
 impl Vec3 {
-    pub fn new(x: f64, y: f64, z: f64) -> Vec3 { 
+    pub fn new(x: f64, y: f64, z: f64) -> Self { 
         Vec3{x, y, z} 
     }
 
-    pub fn zero() -> Vec3 { 
+    pub fn zero() -> Self { 
         Vec3{x: 0., y: 0., z : 0.} 
     }
 
@@ -26,11 +26,11 @@ impl Vec3 {
         f64::sqrt(self.length_sqr())
     }
 
-    pub fn normalize(self) -> Vec3 {
+    pub fn normalize(self) -> Self {
         self / self.length()
     }
 
-    pub fn abs(self) -> Vec3 {
+    pub fn abs(self) -> Self {
         Vec3::new(f64::abs(self.x), f64::abs(self.y), f64::abs(self.z))
     }
 
@@ -38,13 +38,13 @@ impl Vec3 {
         self.x*other.x + self.y*other.y + self.z*other.z
     }
 
-    pub fn cross(self, other : Vec3) -> Vec3 {
+    pub fn cross(self, other : Vec3) -> Self {
         Vec3::new(self.y*other.z - self.z*other.y,
                   self.z*other.x - self.x*other.z,
                   self.x*other.y - self.y*other.x)
     }
 
-    pub fn rotate_to(self, normal : Vec3) -> Vec3 {
+    pub fn rotate_to(self, normal : Vec3) -> Self {
         // Given a direction vector self sampled around the z-axis of a
         // local coordinate system, this function applies the same
         // rotation to self as is needed to rotate the z-axis to the
@@ -70,7 +70,7 @@ impl From<[f32; 3]> for Vec3 {
 
 impl Sub for Vec3 {
     type Output = Vec3;
-    fn sub(self, other: Vec3) -> Vec3 {
+    fn sub(self, other: Vec3) -> Self {
         Vec3::new(self.x - other.x, self.y - other.y, self.z - other.z)
     }
 }
@@ -78,40 +78,28 @@ impl Sub for Vec3 {
 impl Neg for Vec3 {
     type Output = Vec3;
 
-    fn neg(self) -> Vec3 {
+    fn neg(self) -> Self {
         Vec3::new(-self.x, -self.y, -self.z)
     }
 }
 
 impl Add for Vec3 {
     type Output = Vec3;
-    fn add(self, other: Vec3) -> Vec3 {
+    fn add(self, other: Vec3) -> Self {
         Vec3::new(self.x + other.x, self.y + other.y, self.z + other.z)
-    }
-}
-impl Add<f64> for Vec3 {
-    type Output = Vec3;
-    fn add(self, other: f64) -> Vec3 {
-        Vec3::new(self.x + other, self.y + other, self.z + other)
-    }
-}
-impl Add<Vec3> for f64 {
-    type Output = Vec3;
-    fn add(self, other: Vec3) -> Vec3 {
-        other + self
     }
 }
 
 impl Mul for Vec3 {
     type Output = Vec3;
-    fn mul(self, other: Vec3) -> Vec3 {
+    fn mul(self, other: Vec3) -> Self {
         Vec3::new(self.x * other.x, self.y * other.y, self.z * other.z)
     }
 }
 
 impl Mul<f64> for Vec3 {
     type Output = Vec3;
-    fn mul(self, other: f64) -> Vec3 {
+    fn mul(self, other: f64) -> Self {
         Vec3::new(self.x * other, self.y * other, self.z * other)
     }
 }
@@ -125,11 +113,10 @@ impl Mul<Vec3> for f64 {
 
 impl Div<f64> for Vec3 {
     type Output = Vec3;
-    fn div(self, other: f64) -> Vec3 {
+    fn div(self, other: f64) -> Self {
         Vec3::new(self.x / other, self.y / other, self.z / other)
     }
 }
-
 
 impl MulAssign<f64> for Vec3 {
     fn mul_assign(&mut self, other: f64) {
@@ -156,6 +143,126 @@ impl Index<usize> for Vec3 {
             1 => &self.y,
             2 => &self.z,
             _ => panic!("Vec3 out of bounds")
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Vec2 {
+    pub x: f64, 
+    pub y: f64, 
+}
+
+
+impl Vec2 {
+    pub fn new(x: f64, y: f64) -> Self { 
+        Vec2{x, y} 
+    }
+
+    pub fn zero() -> Self { 
+        Vec2{x: 0., y: 0.} 
+    }
+
+    pub fn length_sqr(&self) -> f64 {
+        self.x*self.x + self.y*self.y
+    }
+
+    pub fn length(&self) -> f64 {
+        f64::sqrt(self.length_sqr())
+    }
+
+    pub fn normalize(self) -> Self {
+        self / self.length()
+    }
+
+    pub fn abs(self) -> Self {
+        Vec2::new(f64::abs(self.x), f64::abs(self.y))
+    }
+
+    pub fn dot(self, other : Vec2) -> f64 {
+        self.x*other.x + self.y*other.y
+    }
+
+}
+
+impl From<[f32; 2]> for Vec2 {
+    fn from(array : [f32; 2]) -> Self {
+        Vec2::new(array[0].into(), array[1].into()) 
+    }
+}
+
+impl Sub for Vec2 {
+    type Output = Vec2;
+    fn sub(self, other: Vec2) -> Self {
+        Vec2::new(self.x - other.x, self.y - other.y)
+    }
+}
+
+impl Neg for Vec2 {
+    type Output = Vec2;
+
+    fn neg(self) -> Self {
+        Vec2::new(-self.x, -self.y)
+    }
+}
+
+impl Add for Vec2 {
+    type Output = Vec2;
+    fn add(self, other: Vec2) -> Self {
+        Vec2::new(self.x + other.x, self.y + other.y)
+    }
+}
+
+impl Mul for Vec2 {
+    type Output = Vec2;
+    fn mul(self, other: Vec2) -> Self {
+        Vec2::new(self.x * other.x, self.y * other.y)
+    }
+}
+
+impl Mul<f64> for Vec2 {
+    type Output = Vec2;
+    fn mul(self, other: f64) -> Self {
+        Vec2::new(self.x * other, self.y * other)
+    }
+}
+
+impl Mul<Vec2> for f64 {
+    type Output = Vec2;
+    fn mul(self, other: Vec2) -> Vec2 {
+        other * self
+    }
+}
+
+impl Div<f64> for Vec2 {
+    type Output = Vec2;
+    fn div(self, other: f64) -> Self {
+        Vec2::new(self.x / other, self.y / other)
+    }
+}
+
+impl MulAssign<f64> for Vec2 {
+    fn mul_assign(&mut self, other: f64) {
+        self.x *= other;
+        self.y *= other;
+    }
+}
+
+impl AddAssign for Vec2 {
+    fn add_assign(&mut self, other: Vec2) {
+        self.x += other.x;
+        self.y += other.y;
+    }
+}
+
+impl Index<usize> for Vec2 {
+    type Output = f64;
+
+    fn index(&self, idx : usize) -> &Self::Output {
+        match idx {
+            0 => &self.x,
+            1 => &self.y,
+            _ => panic!("Vec2 out of bounds")
         }
     }
 }

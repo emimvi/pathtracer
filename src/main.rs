@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+//#![allow(unused)]
+#![allow(non_snake_case)]
 extern crate rand;
 extern crate rayon;
 extern crate tobj;
@@ -8,7 +10,7 @@ mod lights;
 mod scene;
 mod geometry;
 mod obj;
-mod texture;
+mod mipmap;
 use vec3::*;
 use scene::*;
 use geometry::*;
@@ -38,7 +40,7 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
     };
     match surface.material.illumination_model {
         Some(IlluminationModel::Lambertian)  => {
-            let color = surface.material.get_diffuse(&surface.uv);
+            let color = surface.material.get_diffuse(&surface);
             let direct_illumination = if let Some((light_dir, radiance)) = scene.lights.sample(surface, scene)
             {
                 let angle = f64::max(0., light_dir.dot(surface.normal));
@@ -127,7 +129,7 @@ fn main() {
     let w = 1024;
     let pixel_size_x = 1./(w as f64);
     let pixel_size_y = 1./(h as f64);
-    let samples_per_pixel = 2; 
+    let samples_per_pixel = 1;
 
     let scene = Scene::cornell_box();
 

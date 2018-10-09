@@ -3,6 +3,13 @@ use geometry::*;
 use std::f64;
 use Scene;
 
+//Direction towards the light, and light intensity.
+type LightSample = Option<(Vec3, f64)>;
+
+
+pub trait Light : Sync  {
+    fn sample(&self, surface : &Surface, scene : &Scene) -> LightSample;
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct DirectionalLight {
@@ -16,8 +23,8 @@ pub struct PointLight {
     pub intensity : f64
 }
 
-impl PointLight {
-    pub fn sample(&self, surface : &Surface, scene : &Scene) -> Option<(Vec3, f64)> {
+impl Light for PointLight {
+    fn sample(&self, surface : &Surface, scene : &Scene) -> LightSample {
 
         let diff = self.position - surface.position;
         let light_direction = diff.normalize();
@@ -35,9 +42,9 @@ impl PointLight {
     }
 }
 
-impl DirectionalLight {
+impl Light for DirectionalLight {
 
-    pub fn sample(&self, surface : &Surface, scene : &Scene) -> Option<(Vec3, f64)> {
+    fn sample(&self, surface : &Surface, scene : &Scene) -> LightSample {
         let mut shadow_ray = Ray::new(surface.position, -self.direction);
 
         // Check if surface is shadowed by another object

@@ -44,7 +44,7 @@ impl Vec3 {
                   self.x*other.y - self.y*other.x)
     }
 
-    pub fn rotate_to(self, normal : Vec3) -> Self {
+    pub fn rotate_to(self, normal : &Vec3) -> Self {
         // Given a direction vector self sampled around the z-axis of a
         // local coordinate system, this function applies the same
         // rotation to self as is needed to rotate the z-axis to the
@@ -57,9 +57,22 @@ impl Vec3 {
         Vec3::new(1. + normal[0]*normal[0]*a, b, 
                   -sign*normal[0])*self[0] + Vec3::new(sign*b, sign*(1. + normal[1]*normal[1]*a), 
                   -normal[1])
-                      *self[1] + normal*self[2]
+                      *self[1] + *normal*self[2]
     }
 
+    //Create a coodinate system from a single vector.
+    pub fn create_tangent_vectors(&self) -> (Vec3, Vec3) {
+        let v2 = if f64::abs(self.x) > f64::abs(self.y) {
+            Vec3::new(-self.z, 0., self.x) /
+                f64::sqrt(self.x * self.x + self.z * self.z)
+        } else {
+            Vec3::new(0., self.z, -self.y) /
+                f64::sqrt(self.y * self.y + self.z * self.z)
+        };
+        let v3 = self.cross(v2);
+
+        (v2, v3)
+    }
 }
 
 impl From<[f32; 3]> for Vec3 {

@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-//#![allow(unused)]
-#![allow(non_snake_case)]
 extern crate rand;
 extern crate rayon;
 extern crate tobj;
@@ -11,35 +8,32 @@ mod scene;
 mod geometry;
 mod obj;
 mod mipmap;
+use geometry::*;
 use vec3::*;
 use scene::*;
-use geometry::*;
 use std::f64;
 use rayon::prelude::*;
+use mipmap::Image;
 
-use std::fs::File;
-use std::io;
-use std::io::{Write, BufWriter};
-
-fn sample_cosine_weighted_hemisphere() -> Vec3
+fn sample_cosine_weighted_hemisphere(normal : &Vec3) -> Vec3
 {
-	let rnd = rand::random::<f64>();
-	let cos_theta = f64::sqrt(rnd);
-	let sin_theta = f64::sqrt(1.0 - rnd);
-	let phi = 2.0*f64::consts::PI*rand::random::<f64>();
+    let rnd = rand::random::<f64>();
+    let cos_theta = f64::sqrt(rnd);
+    let sin_theta = f64::sqrt(1.0 - rnd);
+    let phi = 2.0*f64::consts::PI*rand::random::<f64>();
 
-	// Calculate new direction as if the z-axis were the normal
-	let spherical_direction = Vec3::new(sin_theta*f64::cos(phi), sin_theta*f64::sin(phi), cos_theta);
+    // Calculate new direction as if the z-axis were the normal
+    let spherical_direction = Vec3::new(sin_theta*f64::cos(phi), sin_theta*f64::sin(phi), cos_theta);
 
-	spherical_direction
+    spherical_direction.rotate_to(normal)
 }
 
 pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
-    if incident_ray.trace_depth > 2 { 
+    if incident_ray.trace_depth > 1 { 
         return Vec3::zero() 
     };
     match surface.material.illumination_model {
-        Some(IlluminationModel::Lambertian)  => {
+        m @ IlluminationModel::Lambertian | m @ IlluminationModel::Glossy  => {
             let color = surface.material.get_diffuse(&surface);
             let direct_illumination = if let Some((light_dir, radiance)) = scene.lights.sample(surface, scene)
             {
@@ -50,7 +44,7 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
             };
 
             let _indirect_illumination = {
-                //Use luminance as the probability of a ray getting absorped.
+                //Use luminance as the probability of a ray getting absorped. 
                 let luminance = (color[0]+color[1]+color[2])/3.; //TODO Importance sample luminance
                 if luminance < rand::random::<f64>() {
                     Vec3::new(0., 0., 0.)
@@ -58,27 +52,44 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
                     let indirect_samples = 1;
                     let mut illumination = Vec3::zero();
                     for _ in 0..indirect_samples {
-                        let new_direction = sample_cosine_weighted_hemisphere().rotate_to(surface.normal);
+                        let incident_direction = sample_cosine_weighted_hemisphere(&surface.normal);
                         let mut trace_ray = incident_ray.clone();
                         trace_ray.origin = surface.position;
-                        trace_ray.direction = new_direction;
+                        trace_ray.direction = incident_direction;
                         trace_ray.trace_depth += 1;
+                        let use_differentials = false;
+                        if use_differentials {
+                            trace_ray.rx_origin = surface.position + surface.dpdx;
+                            trace_ray.ry_origin = surface.position + surface.dpdy;
+                            let (v0, v1) = incident_direction.create_tangent_vectors();
+                            trace_ray.rx_direction = (incident_direction + 0.2*v0).normalize();
+                            trace_ray.ry_direction = (incident_direction + 0.2*v1).normalize();
+                        } else {
+                            trace_ray.rx_origin = Vec3::zero();
+                            trace_ray.ry_origin = Vec3::zero();
+                            trace_ray.rx_direction = Vec3::zero();
+                            trace_ray.ry_direction = Vec3::zero();
+                        }
+
                         let mirr_obj = scene.trace_closest(&mut trace_ray);
-                        illumination += mirr_obj.map_or(scene.background, |next_surface| {
+                        let color_bleed = mirr_obj.map_or(scene.background, |next_surface| {
                             shade(&next_surface, &mut trace_ray, &scene)
-                        }) * color / luminance
+                        });
+
+
+                        illumination += color_bleed * color / luminance
                     }
                     illumination/indirect_samples as f64
                 }
             };
 
-            direct_illumination //+ _indirect_illumination
+            match m {
+                IlluminationModel::Lambertian => direct_illumination,
+                IlluminationModel::Glossy  =>  _indirect_illumination,
+                _ => unimplemented!{}
+            }
         },
-        Some(IlluminationModel::Mirror) => {
-            //if incident_ray.trace_depth > 64 
-            //{
-            //    Vec3::zero();
-            //}
+        IlluminationModel::Mirror => {
             let reflected_dir = (incident_ray.direction - 2.*incident_ray.direction.dot(surface.normal)*surface.normal).normalize();
             let mut trace_ray = incident_ray.clone();
             trace_ray.origin = surface.position;
@@ -90,7 +101,6 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
                 shade(&next_surface, &mut trace_ray, &scene)
             })
         },
-        None => Vec3::new(0.8, 0., 1.),
         _ => {
             panic!(format!("Uknown illumination model: {:?}\n", surface.material.illumination_model))
         },
@@ -99,24 +109,7 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
 
 
 pub fn render(x:f64, y:f64, pixel_delta_x : f64, pixel_delta_y : f64, scene : &Scene) -> Vec3 {
-    //println!("{} {}", x, y);
-    let eye = Vec3{ x : 250., 
-                    y : 250., 
-                    z : -500.};
-    let direction = Vec3::new(x, y, 2.).normalize();
-    let mut cam_ray = Ray::new(eye, direction);
-    cam_ray.rx_origin = eye;
-    cam_ray.ry_origin = eye;
-    cam_ray.rx_direction = Vec3::new(x + pixel_delta_x, y, 2.).normalize();
-    cam_ray.ry_direction = Vec3::new(x, y + pixel_delta_y, 2.).normalize();
-
-    //unsafe {
-    //    static mut COUNT : u32 = 0;
-    //    if COUNT < 10 {
-    //        println!("{:#?}", cam_ray);
-    //        COUNT += 1;
-    //    }
-    //}
+    let mut cam_ray = scene.camera.ray(x,y, pixel_delta_x, pixel_delta_y);
 
     let closest_object = scene.trace_closest(&mut cam_ray);
     closest_object.map_or(scene.background, |surface| {
@@ -125,34 +118,39 @@ pub fn render(x:f64, y:f64, pixel_delta_x : f64, pixel_delta_y : f64, scene : &S
 }
 
 fn main() {
-    let h = 1024;
-    let w = 1024;
+    let h = 512;
+    let w = 512;
     let pixel_size_x = 1./(w as f64);
     let pixel_size_y = 1./(h as f64);
-    let samples_per_pixel = 1;
+    let samples_per_pixel = 32;
 
-    let scene = Scene::cornell_box();
+    let scene = Scene::glossy_planes();
 
     //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
     let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
             .iter().map(|&(dx,dy)| (dx*pixel_size_x, dy*pixel_size_y)).collect();
 
-    let image : Vec<Vec3> = (0..h*w).into_par_iter().map(|i| { 
-        let x = i % w;
-        let y = i / h;
-        let pixel_ndc_x = ( (x as f64) + 0.5 ) / w as f64;
-        let pixel_ndc_y = ( (y as f64) + 0.5 ) / h as f64;
-        let pixel_ss_x = 2. * pixel_ndc_x - 1.;
-        let pixel_ss_y = 1. - 2. * pixel_ndc_y;
+    let pixels : Vec<Vec3> = (0..h*w).into_par_iter().map(|i| { 
+        let x = i % w; // x = 0..width
+        let y = i / h; // y = 0..height
+        let pixel_ndc_x = ( (x as f64) + 0.5 ) / w as f64; //0..1, starting at top left.
+        let pixel_ndc_y = ( (y as f64) + 0.5 ) / h as f64; //0..1, starting at top left.
+        let pixel_ss_x = 2. * pixel_ndc_x - 1.; //  -1..1, starting at bottom left.
+        let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
 
         let pixel_result = jitters.iter().fold(Vec3::zero(), 
-                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, pixel_size_x/samples_per_pixel as f64, pixel_size_y/samples_per_pixel as f64,  &scene));
+                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, 2.*pixel_size_x/samples_per_pixel as f64, 2.*pixel_size_y/samples_per_pixel as f64,  &scene));
 
         pixel_result/jitters.len() as f64
     }).collect();
+
+    let image = Image {
+        height : h,
+        width: w,
+        data : pixels
+    };
     
-    
-    if let Err(e) = save_ppm(h, w, &image) {
+    if let Err(e) = image.save_ppm("default.ppm") {
         println!("{}", e);
     };
 
@@ -168,25 +166,4 @@ fn generate_jitter(num_samples : u32) -> Vec<(f64, f64)> {
         }
     }
     jitters
-}
-
-
-fn clamp(x : f64) -> f64 {
-    if x < 0. { 0. } 
-    else if x > 1. { 1. }
-    else { x }
-}
-
-fn save_ppm(height:usize, width:usize, image_data: &[Vec3]) -> Result<(), io::Error> {
-    let to_ppm = |x:f64| (clamp(x)*255f64 + 0.5) as u8;
-
-    let file = File::create("default.ppm")?;
-    let mut buffer = BufWriter::new(file);
-
-    write!(buffer, "P3\n{} {}\n255\n", width, height)?;
-    for pixel in image_data.iter() {
-        write!(buffer, "{} {} {}\n", to_ppm(pixel.x), to_ppm(pixel.y), to_ppm(pixel.z))?;
-    }
-    write!(buffer, "")?;
-    Ok(())
 }

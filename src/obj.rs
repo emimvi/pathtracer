@@ -8,8 +8,6 @@ pub fn load_obj(obj_name : &Path) -> Vec<Box<dyn Intersectable>> {
     let obj = tobj::load_obj(obj_name);
     let (models, materials) = obj.expect(&format!("Failed to load {}: ", obj_name.display()));
 
-    //tobj::print_model_info(&models, &materials);
-
     let mut meshes : Vec<Box<Intersectable>> = Vec::new();
     models.iter().for_each(|model| {
 
@@ -38,7 +36,7 @@ pub fn load_obj(obj_name : &Path) -> Vec<Box<dyn Intersectable>> {
                 diffuse: Vec3::from(tobj_material.diffuse),
                 specular: Vec3::from(tobj_material.specular),
                 ambient: Vec3::from(tobj_material.ambient),
-                illumination_model: Some(IlluminationModel::from(*illum)),
+                illumination_model: IlluminationModel::from(*illum),
                 texture : if !tobj_material.diffuse_texture.is_empty() {
                     let mip_map = match MipMap::load(Path::new(&tobj_material.diffuse_texture)) {
                         Ok(map) => map,
@@ -110,7 +108,7 @@ impl Intersectable for TriangleMesh {
                 return prev;
             }
 
-          // Find barycentric coordinates
+            // Find barycentric coordinates
             let tmp = (*v0 - ray.origin).cross(ray.direction);
             let v = tmp.dot(e1)/ray.direction.dot(normal);
             let w = tmp.dot(e0)/ray.direction.dot(normal);
@@ -120,29 +118,29 @@ impl Intersectable for TriangleMesh {
             }
             ray.t_max = t;
 
-
-            //TODO: Refactor UV's into Vec2's or something like that
             let uvs : [Vec2 ; 3] = if let Some(tex_coords) = &self.texture_coordinates {
                 [tex_coords[face_id[0]], tex_coords[face_id[1]], tex_coords[face_id[2]]]
-            } else { [ Vec2::new(0.,0.), Vec2::new(1.0, 0.), Vec2::new(1., 1.) ] };
+            } else { 
+                [ Vec2::new(0.,0.), Vec2::new(1.0, 0.), Vec2::new(1., 1.) ] 
+            };
+            let uv = uvs[0]*u + uvs[1]*v + uvs[2]*w;
 
             //Partial derivatives: pbrt triangle.cpp
             let duv02 = uvs[0] - uvs[2];
             let duv12 = uvs[1] - uvs[2];
             let (dp02,dp12) = (*v0 - *v2, *v1 - *v2);
             let determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0];
-            let invdet = 1. / determinant;
-            let dpdu = ( duv12[1] * dp02 - duv02[1] * dp12) * invdet;
-            let dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet;
+            let inverse_det = 1. / determinant;
+            let dpdu = ( duv12[1] * dp02 - duv02[1] * dp12) * inverse_det;
+            let dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * inverse_det;
 
-            let uv = uvs[0]*u + uvs[1]*v + uvs[2]*w;
             let mut surface = Surface{ 
                 position: ray.origin + ray.direction*t, 
                 normal : -normal.normalize(),// Let the counterclockwise wound side face forward
                 material : &self.material,
                 uv,
-                dpdu ,
-                dpdv ,
+                dpdu : dpdu ,
+                dpdv : dpdv ,
                 dpdx : Vec3::zero(),
                 dpdy : Vec3::zero(),
                 dudx : 0.0,

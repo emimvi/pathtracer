@@ -58,11 +58,6 @@ impl MipMap  {
         let h = img.height() as usize;
         let w = img.width() as usize;
 
-        let is_power_of_2 = |x: usize| { (x != 0) && ((x & (x - 1)) == 0) };
-        if !is_power_of_2(h) || !is_power_of_2(w) {
-            panic!(format!("Image needs to have power of two dimensions: {}", file_name.display()));
-        }
-
         let mut texels = Vec::with_capacity(img.len() / 4 );
 
         for chunk in img.chunks(3) {
@@ -75,17 +70,15 @@ impl MipMap  {
             width : w
         };
 
-        let res = MipMap::new(image);
-        let _ = res.save_all();
-        Ok(res)
+        Ok(MipMap::new(image))
     }
 
     pub fn new(image : Image) -> Self {
 
-        //let is_power_of_2 = |x: usize| { (x != 0) && ((x & (x - 1)) == 0) };
-        //if !is_power_of_2(mip_map.height()) || !is_power_of_2(mip_map.width()) {
-        //    panic!(format!("Image needs to have power of two dimensions"));
-        //}
+        let is_power_of_2 = |x: usize| { (x != 0) && ((x & (x - 1)) == 0) };
+        if !is_power_of_2(image.height) || !is_power_of_2(image.width) {
+            panic!(format!("Image needs to have power of two dimensions"));
+        }
         let mut pyramid = Vec::new();
         pyramid.push(image);
         while pyramid[pyramid.len()-1].height > 1 {
@@ -100,8 +93,11 @@ impl MipMap  {
         //level = Clamp(level, 0, Levels() - 1);
         let s = st[0] * (self.pyramid[level].width as f64) - 0.5;
         let t = st[1] * (self.pyramid[level].height as f64) - 0.5;
-        let s0 = f64::floor(s) as usize;
-        let t0 = f64::floor(t) as usize;
+
+        //Floor s & t
+        let s0 = s as usize;
+        let t0 = t as usize;
+
         let ds = s - s0 as f64;
         let dt = t - t0 as f64;
         (1. - ds) * (1. - dt) * self.pyramid[level].get_pixel(s0  ,t0  ) +
@@ -110,14 +106,13 @@ impl MipMap  {
         ds       * dt         * self.pyramid[level].get_pixel(s0+1,t0+1)
     }
 
-    pub fn sample_nearest(&self, u: f64, v: f64, width : f64) -> Vec3 {
-
+    pub fn sample_mipmap(&self, u: f64, v: f64, width : f64) -> Vec3 {
         let n_levels = self.pyramid.len() as f64;
 
         let mut level = n_levels - 1. + f64::log2(f64::max(width, 1e-8));
         if level < 0. {
-            level = 0.; }
-        else if level >= n_levels - 1. {
+            level = 0.; 
+        } else if level >= n_levels - 1. {
             level = n_levels - 1.;
         } else {
             //let iLevel = std::floor(level);
@@ -126,26 +121,13 @@ impl MipMap  {
             level = f64::floor(level);
         }
         let level = level as usize;
-        //let level = 0;
 
         return self.triangle(level, [u, v]);
-        //let img = &self.pyramid[level];
+    }
 
-        //let u = u - f64::floor(u);
-        //let v = v - f64::floor(v);
-
-        //let mut u_int = (u*img.width  as f64 + 0.5)  as usize;
-        //let mut v_int = (v*img.height as f64 + 0.5) as usize;
-        //if u_int == img.width {
-        //    u_int =  0;
-        //}
-        //if v_int == img.height {
-        //    v_int =  0;
-        //}
-        //let idx = u_int + (img.height - v_int - 1)*img.width;
-        //let color = &img.data[idx];
-
-        //*color
+    pub fn sample_nearest(&self, u: f64, v: f64) -> Vec3 {
+        let level = 0;
+        return self.triangle(level, [u, v]);
     }
 
     pub fn save_all(&self) -> Result<()> {
@@ -171,15 +153,15 @@ impl MipMap  {
 
 }
 
-fn log2_int(num : u32) -> u32 {
-    let mut num = num;
-    let mut targetlevel = 0;
-    while num >= 1 {
-        targetlevel += 1;
-        num = num >> 1;
-    };
-    targetlevel
-}
+//fn log2_int(num : u32) -> u32 {
+//    let mut num = num;
+//    let mut targetlevel = 0;
+//    while num >= 1 {
+//        targetlevel += 1;
+//        num = num >> 1;
+//    };
+//    targetlevel
+//}
 
 fn clamp(x : f64) -> f64 {
     if x < 0. { 0. } 

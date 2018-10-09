@@ -69,21 +69,41 @@ impl<'a> Surface<'a> {
         }
     }
 
+    pub fn print_diff(&self, ray : &Ray) {
+       if self.position.x > 498. && self.position.x < 500. &&
+           self.position.y > 498. && self.position.y < 500. {
+            println!("Ray: {:#?}", ray);
+            println!("Surface:" );
+            println!("position: {:?}", self.position); 
+            println!("normal  : {:?}", self.normal  ); 
+            println!("uv      : {:?}", self.uv      );
+            println!("dpdu    : {:?}", self.dpdu    ) ;
+            println!("dpdv    : {:?}", self.dpdv    ) ;
+            println!("dpdx    : {:?}", self.dpdx    ) ;
+            println!("dpdy    : {:?}", self.dpdy    ) ;
+            println!("dudx    : {}", self.dudx    ) ;
+            println!("dudy    : {}", self.dudy    ) ;
+            println!("dvdx    : {}", self.dvdx    ) ;
+            println!("dvdy    : {}", self.dvdy    ) ;
+        }
+    }
+
    pub fn calculate_differentials(&mut self, ray : &Ray) {
         //pbrt. Chapter 10, p601
         let d = self.normal.dot(self.position);
 
         //Distance of the dx ray to the surface
-        let tx = (-self.normal.dot(ray.rx_origin) - d) / self.normal.dot(ray.rx_direction);
+        let tx = -(self.normal.dot(ray.rx_origin) - d) / self.normal.dot(ray.rx_direction);
         let px = ray.rx_origin + tx * ray.rx_direction;
 
-        let ty = (-self.normal.dot(ray.ry_origin) - d) / self.normal.dot(ray.ry_direction);
+        let ty = -(self.normal.dot(ray.ry_origin) - d) / self.normal.dot(ray.ry_direction);
         let py = ray.ry_origin + ty * ray.ry_direction;
 
         self.dpdx = px - self.position;
         self.dpdy = py - self.position;
 
-        let dim = if f64::abs(self.normal.x) > f64::abs(self.normal.y) && f64::abs(self.normal.x) > f64::abs(self.normal.z) {
+        let dim = if f64::abs(self.normal.x) > f64::abs(self.normal.y) 
+                  && f64::abs(self.normal.x) > f64::abs(self.normal.z) {
             (1,2)
         } else if f64::abs(self.normal.y) > f64::abs(self.normal.z) {
             (0,2)
@@ -91,16 +111,17 @@ impl<'a> Surface<'a> {
             (0,1)
         };
 
-        let A = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
+        let mat_a = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
                   [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
-        let Bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
-        let By = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
-        let (dudx, dvdx) = solve_linear_system_2x2(A, Bx);
+        let mat_bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
+        let mat_by = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
+        let (dudx, dvdx) = solve_linear_system_2x2(mat_a, mat_bx);
         self.dudx = dudx;
         self.dvdx = dvdx;
-        let (dudy, dvdy) = solve_linear_system_2x2(A, By);
+        let (dudy, dvdy) = solve_linear_system_2x2(mat_a, mat_by);
         self.dudy = dudy;
         self.dvdy = dvdy;
+
    }
 }
 
@@ -115,7 +136,7 @@ pub struct Material {
     pub ambient: Vec3,
     pub diffuse: Vec3,
     pub specular: Vec3,
-    pub illumination_model: Option<IlluminationModel>,
+    pub illumination_model: IlluminationModel,
     pub texture : Option<MipMap>
 }
 
@@ -124,7 +145,7 @@ impl Material {
         Material {
             name : String::from("diffuse"),
             diffuse: color,
-            illumination_model: Some(IlluminationModel::Lambertian),
+            illumination_model: IlluminationModel::Lambertian,
             ..Material::default()
         }
     }
@@ -135,13 +156,14 @@ impl Material {
         let dstdx = [surface.dudx, surface.dvdx];
         let dstdy = [surface.dudy, surface.dvdy];
 
+
         let width = f64::max(f64::max(f64::abs(dstdx[0]),
                                       f64::abs(dstdx[1])),
                              f64::max(f64::abs(dstdy[0]),
                                       f64::abs(dstdy[1])));
 
         if let Some(tex) = &self.texture {
-            tex.sample_nearest(st[0], st[1], width/1024.)
+            tex.sample_mipmap(st[0], st[1], width)
         } else {
             self.diffuse
         }
@@ -150,7 +172,7 @@ impl Material {
     pub fn create_mirror() -> Material {
         Material {
             name : String::from("mirror"),
-            illumination_model: Some(IlluminationModel::Mirror),
+            illumination_model: IlluminationModel::Mirror,
             ..Material::default()
         }
     }
@@ -162,7 +184,7 @@ impl Default for Material {
             diffuse: Vec3::zero(),
             specular: Vec3::zero(),
             ambient: Vec3::zero(),
-            illumination_model: None,
+            illumination_model: IlluminationModel::Constant,
             texture : None,
         }
     }
@@ -242,13 +264,13 @@ impl Intersectable for Sphere {
 }
 
 
-fn solve_linear_system_2x2(A : [[f64;2];2], B : [f64;2]) -> (f64,f64)  {
-       let det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+fn solve_linear_system_2x2(a : [[f64;2];2], b : [f64;2]) -> (f64,f64)  {
+       let det = a[0][0] * a[1][1] - a[0][1] * a[1][0];
        if f64::abs(det) < 1e-10 {
            return (0.,0.);
        }
-       let x0 = (A[1][1] * B[0] - A[0][1] * B[1]) / det;
-       let x1 = (A[0][0] * B[1] - A[1][0] * B[0]) / det;
+       let x0 = (a[1][1] * b[0] - a[0][1] * b[1]) / det;
+       let x1 = (a[0][0] * b[1] - a[1][0] * b[0]) / det;
        if f64::is_nan(x0) || f64::is_nan(x1) {
            return (0.,0.);
        }

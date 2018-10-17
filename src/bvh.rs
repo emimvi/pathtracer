@@ -1,7 +1,11 @@
-pub use extern_bvh::{ray::RayT, Boundable, BBox, vector::Vector, BVH as extern_BVH};
+
+use extern_bvh::{ray::RayT, vector::Vector};
+
+pub use extern_bvh::{Boundable, BBox, BVH};
 
 use geometry::{Intersectable, Surface, Ray};
 use vec3::*;
+
 
 impl<'a> RayT for &'a mut Ray {
     #[inline]
@@ -45,8 +49,6 @@ impl Boundable for Geometry {
         self.object.bounds(a, b)
     }
 }
-
-pub type BVH<T> = extern_BVH<T>;
 
 impl From<Vec3> for Vector {
     fn from(vec: Vec3) -> Self {

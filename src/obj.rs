@@ -3,32 +3,40 @@ use std::path::Path;
 use tobj;
 use vec3::*;
 use geometry::*;
+use material::*;
 use mipmap::*;
 
 use std::sync::{Weak, RwLock, Arc, LockResult, RwLockReadGuard};
 use bvh::{Geometry, BBox, Boundable, BVH};
 
 struct TriangleMesh(Arc<RwLock<TriMesh>>);
+
+struct TriangleMesh2(Arc<TriMesh>);
+
 impl TriangleMesh {
     fn new(vertices : Vec<Vec3> , faces : Vec<[usize ; 3]>, material : Material, texture_coordinates : Option<Vec<Vec2>>) -> TriangleMesh {
-        let mesh = TriangleMesh (
-            Arc::new(RwLock::new(TriMesh::new(vertices, vec!(), material, texture_coordinates)))
-        );
+        let tri_mesh = RwLock::new(TriMesh::new(vertices, vec!(), material, texture_coordinates));
+        let mesh = Arc::new(tri_mesh);
         {
             let bvh = BVH::unanimated(16, {
-                faces.iter().map(|face| {
+                faces.iter().map(|&face| {
                     Triangle {
-                        face : *face,
-                        parent : Arc::downgrade(&(mesh.0))
+                        face,
+                        parent : Arc::downgrade(&(mesh))
                     }
                 }).collect()});
 
-            let mut p = mesh.0.write().unwrap();
+            let mut p = mesh.write().unwrap();
             (*p).faces = bvh;
         }
-        mesh
+        TriangleMesh(mesh)
     }
 
+    fn remove_rwlock(&self) -> Arc<TriMesh> {
+        let cln = Arc::clone(&self.0);
+
+        unimplemented!();
+    }
 }
 
 pub struct TriMesh {
@@ -89,9 +97,9 @@ impl Boundable for TriMesh {
 impl Boundable for Triangle {
     fn bounds(&self, _ : f32, _ : f32) -> BBox {
         let (v0, v1, v2) = self.get_vertices();
-        BBox::singular(v0.into())
-            .point_union(&v1.into())
-            .point_union(&v2.into())
+        BBox::singular(v0)
+            .point_union(v1)
+            .point_union(v2)
 
     }
 }

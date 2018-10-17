@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 extern crate rand;
 extern crate rayon;
 extern crate tobj;
@@ -11,6 +10,8 @@ mod geometry;
 mod obj;
 mod mipmap;
 mod bvh;
+mod material;
+use material::*;
 use geometry::*;
 use vec3::*;
 use scene::*;

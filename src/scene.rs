@@ -4,8 +4,10 @@ use lights::*;
 use obj;
 use std::path::Path;
 
+use bvh::{BVH, Geometry};
+
 pub struct Scene {
-    pub objects : Vec<Box<Intersectable>>,
+    pub objects : BVH<Geometry>,
     pub lights : Box<Light>,
     pub background : Vec3,
     pub camera : Camera 
@@ -46,15 +48,15 @@ impl Camera {
     }
 }
 
-
 impl Scene {
     pub fn trace_closest(&self, mut ray : &mut Ray) -> Option<Surface> {
-        self.objects.iter()
-                .fold(None, |prev, o| o.intersect(&mut ray).or(prev))
+        self.objects.intersect(&mut ray, |r, i| {
+            i.intersect(r)
+        })
     }
 
     pub fn trace_any(&self, mut ray : &mut Ray) -> Option<Surface> {
-        for o in &self.objects {
+        for o in self.objects.iter() {
             let surface = o.intersect(&mut ray);
             if surface.is_some() {
                 return surface;
@@ -68,10 +70,12 @@ impl Scene {
         let direction = Vec3::new(0., -1., 1.).normalize();
         let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.));
 
-        let mut objects : Vec<Box<Intersectable>> = obj::load_obj(&Path::new("/Users/Imbert/Documents/DTU/thesis/tracer/models/glossy_planes.obj"));
+        let objects : Vec<Geometry> = obj::load_obj(&Path::new("/Users/Imbert/Documents/DTU/thesis/tracer/models/glossy_planes.obj"));
+        let bvh = BVH::unanimated(16, objects);        
+
         let background = Vec3::zero();
         let lights = Box::new( DirectionalLight { direction : Vec3::new(0., -1., 1.).normalize(), radiance : 5. } );
-        Scene { objects, lights, background , camera }
+        Scene { objects : bvh, lights, background , camera }
     }
 
     //pub fn cornell_box() -> Scene {

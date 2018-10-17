@@ -1,4 +1,4 @@
-
+use std::sync::*;
 use std::f64;
 use vec3::*;
 use mipmap::*;
@@ -39,9 +39,9 @@ impl Ray {
 }
 
 #[derive(Debug, Clone)]
-pub struct Surface<'a> { pub position : Vec3,
+pub struct Surface { pub position : Vec3,
                          pub normal: Vec3,
-                         pub material :  &'a Material,
+                         pub material :  Arc<Material>,
                          pub uv : Vec2,
                          pub dpdu : Vec3,
                          pub dpdv : Vec3,
@@ -52,15 +52,15 @@ pub struct Surface<'a> { pub position : Vec3,
                          pub dvdx : f64,
                          pub dvdy : f64,
                         }
-impl<'a> Surface<'a> {
-    pub fn new(position : Vec3, normal : Vec3, material : &'a Material) -> Surface<'a> {
+impl Surface {
+    pub fn new(position : Vec3, normal : Vec3, material : Arc<Material>) -> Surface {
         Surface { position, 
                   normal, 
-                  material,
+                  material : Arc::clone(&material),
                   uv : Vec2::from([0., 0.]),
-                  dpdu : Vec3::zero(),
+                  dpdu : Vec3::zero(), //How much does the world position change pr. uv-coodinate
                   dpdv : Vec3::zero(),
-                  dpdx : Vec3::zero(),
+                  dpdx : Vec3::zero(), //How much does the world position AT AN INTERSECTION change wrt. a given camera ray.
                   dpdy : Vec3::zero(),
                   dudx : 0.,
                   dudy : 0.,
@@ -112,7 +112,7 @@ impl<'a> Surface<'a> {
         };
 
         let mat_a = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
-                  [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
+                      [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
         let mat_bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
         let mat_by = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
         let (dudx, dvdx) = solve_linear_system_2x2(mat_a, mat_bx);
@@ -126,9 +126,9 @@ impl<'a> Surface<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Sphere {pub center : Vec3, pub radius : f64, pub material : Material  }
+pub struct Sphere {pub center : Vec3, pub radius : f64, pub material : Arc<Material>  }
 #[derive(Debug, Clone)]
-pub struct Plane  {pub origin : Vec3, pub normal : Vec3, pub material : Material }
+pub struct Plane  {pub origin : Vec3, pub normal : Vec3, pub material : Arc<Material> }
 
 #[derive(Debug, Clone)]
 pub struct Material {
@@ -151,18 +151,16 @@ impl Material {
     }
 
     pub fn get_diffuse(&self, surface : &Surface) -> Vec3 {
-        let st = surface.uv;
-        //compute texture differentials
-        let dstdx = [surface.dudx, surface.dvdx];
-        let dstdy = [surface.dudy, surface.dvdy];
-
-
-        let width = f64::max(f64::max(f64::abs(dstdx[0]),
-                                      f64::abs(dstdx[1])),
-                             f64::max(f64::abs(dstdy[0]),
-                                      f64::abs(dstdy[1])));
-
         if let Some(tex) = &self.texture {
+            let st = surface.uv;
+            //compute texture differentials
+            let duvdx = [surface.dudx, surface.dvdx];
+            let duvdy = [surface.dudy, surface.dvdy];
+
+            let width = f64::max(f64::max(f64::abs(duvdx[0]),
+            f64::abs(duvdx[1])),
+            f64::max(f64::abs(duvdy[0]),
+            f64::abs(duvdy[1])));
             tex.sample_mipmap(st[0], st[1], width)
         } else {
             self.diffuse
@@ -231,7 +229,7 @@ impl Intersectable for Plane {
         ray.t_max = t;
         let surface = Surface::new(ray.origin + ray.direction*t, 
                                 self.normal, 
-                                &self.material);
+                                Arc::clone(&self.material));
         Some(surface)
     }
 }
@@ -259,7 +257,7 @@ impl Intersectable for Sphere {
         ray.t_max = t;
         let hit_position = ray.origin + ray.direction*t;
         let normal = (hit_position - self.center).normalize();
-        Some(Surface::new(hit_position, normal, &self.material))
+        Some(Surface::new(hit_position, normal, Arc::clone(&self.material)))
     }
 }
 

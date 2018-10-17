@@ -8,6 +8,7 @@ rand = "0.4"
 rayon = "1.0.1"
 tobj = "0.1.6"
 image = "*"
+bvh = { path = "/Users/Imbert/Documents/Playground/rust/bvh" }
 
 [profile.release]
 debug = true

@@ -1,13 +1,16 @@
+#![allow(unused_imports)]
 extern crate rand;
 extern crate rayon;
 extern crate tobj;
 extern crate image;
+extern crate bvh as extern_bvh;
 mod vec3;
 mod lights;
 mod scene;
 mod geometry;
 mod obj;
 mod mipmap;
+mod bvh;
 use geometry::*;
 use vec3::*;
 use scene::*;
@@ -57,7 +60,7 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene) -> Vec3 {
                         trace_ray.origin = surface.position;
                         trace_ray.direction = incident_direction;
                         trace_ray.trace_depth += 1;
-                        let use_differentials = false;
+                        let use_differentials = true;
                         if use_differentials {
                             trace_ray.rx_origin = surface.position + surface.dpdx;
                             trace_ray.ry_origin = surface.position + surface.dpdy;
@@ -122,7 +125,7 @@ fn main() {
     let w = 512;
     let pixel_size_x = 1./(w as f64);
     let pixel_size_y = 1./(h as f64);
-    let samples_per_pixel = 32;
+    let samples_per_pixel = 1;
 
     let scene = Scene::glossy_planes();
 
@@ -130,7 +133,7 @@ fn main() {
     let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
             .iter().map(|&(dx,dy)| (dx*pixel_size_x, dy*pixel_size_y)).collect();
 
-    let pixels : Vec<Vec3> = (0..h*w).into_par_iter().map(|i| { 
+    let pixels : Vec<Vec3> = (0..h*w).into_iter().map(|i| { 
         let x = i % w; // x = 0..width
         let y = i / h; // y = 0..height
         let pixel_ndc_x = ( (x as f64) + 0.5 ) / w as f64; //0..1, starting at top left.

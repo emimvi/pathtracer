@@ -17,6 +17,10 @@ version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "bvh"
+version = "0.1.0"
+
+[[package]]
 name = "byteorder"
 version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,6 +298,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "tracer"
 version = "0.1.0"
 dependencies = [
+ "bvh 0.1.0",
  "image 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rayon 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",

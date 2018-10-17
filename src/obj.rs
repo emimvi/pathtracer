@@ -11,17 +11,14 @@ use bvh::{Geometry, BBox, Boundable, BVH};
 
 struct TriangleMesh(Arc<RwLock<TriMesh>>);
 
-struct TriangleMesh2(Arc<TriMesh>);
-
 impl TriangleMesh {
     fn new(vertices : Vec<Vec3> , faces : Vec<[usize ; 3]>, material : Material, texture_coordinates : Option<Vec<Vec2>>) -> TriangleMesh {
-        let tri_mesh = RwLock::new(TriMesh::new(vertices, vec!(), material, texture_coordinates));
-        let mesh = Arc::new(tri_mesh);
+        let mesh = Arc::new(RwLock::new(TriMesh::new(vertices, vec!(), material, texture_coordinates)));
         {
             let bvh = BVH::unanimated(16, {
-                faces.iter().map(|&face| {
+                faces.iter().map(|face| {
                     Triangle {
-                        face,
+                        face : *face,
                         parent : Arc::downgrade(&(mesh))
                     }
                 }).collect()});
@@ -32,11 +29,6 @@ impl TriangleMesh {
         TriangleMesh(mesh)
     }
 
-    fn remove_rwlock(&self) -> Arc<TriMesh> {
-        let cln = Arc::clone(&self.0);
-
-        unimplemented!();
-    }
 }
 
 pub struct TriMesh {
@@ -64,10 +56,8 @@ impl Intersectable for TriangleMesh {
 impl Intersectable for TriMesh {
 
     #[inline]
-    fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
-        self.faces.iter().fold(None, |prev : Option<Surface>, triangle| {
-            triangle.intersect(ray).or(prev)
-        })
+    fn intersect(&self, mut ray : &mut Ray) -> Option<Surface> {
+        self.faces.intersect(&mut ray, |r,i| i.intersect(r))
     }
 }
 

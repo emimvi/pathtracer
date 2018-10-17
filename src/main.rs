@@ -133,7 +133,7 @@ fn main() {
     let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
             .iter().map(|&(dx,dy)| (dx*pixel_size_x, dy*pixel_size_y)).collect();
 
-    let pixels : Vec<Vec3> = (0..h*w).into_iter().map(|i| { 
+    let pixels : Vec<Vec3> = (0..h*w).into_par_iter().map(|i| { 
         let x = i % w; // x = 0..width
         let y = i / h; // y = 0..height
         let pixel_ndc_x = ( (x as f64) + 0.5 ) / w as f64; //0..1, starting at top left.

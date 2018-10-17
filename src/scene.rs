@@ -55,14 +55,9 @@ impl Scene {
         })
     }
 
-    pub fn trace_any(&self, mut ray : &mut Ray) -> Option<Surface> {
-        for o in self.objects.iter() {
-            let surface = o.intersect(&mut ray);
-            if surface.is_some() {
-                return surface;
-            }
-        }
-        None
+    //TODO: Return on first intersection, instead of checking all possible intersections.
+    pub fn trace_any(&self, ray : &mut Ray) -> Option<Surface> {
+        self.trace_closest(ray)
     }
 
     pub fn glossy_planes() -> Scene {

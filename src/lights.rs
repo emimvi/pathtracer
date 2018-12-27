@@ -2,6 +2,7 @@ use vec3::*;
 use geometry::*;
 use std::f64;
 use Scene;
+use obj::*;
 
 //Direction towards the light, and light intensity.
 type LightSample = Option<(Vec3, f64)>;
@@ -11,16 +12,37 @@ pub trait Light : Sync  {
     fn sample(&self, surface : &Surface, scene : &Scene) -> LightSample;
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct DirectionalLight {
     pub direction : Vec3,
     pub radiance : f64
 }
 //All lights are assumed white.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct PointLight {
     pub position : Vec3,
     pub intensity : f64
+}
+
+//All lights are assumed white.
+#[derive(Clone)]
+pub struct AreaLight {
+    pub mesh : TriangleMesh
+}
+
+impl AreaLight {
+
+    pub fn new(mesh : &TriangleMesh) -> AreaLight {
+        AreaLight {
+            mesh : mesh.clone()
+        }
+    }
+}
+
+impl Light for AreaLight {
+    fn sample(&self, _surface : &Surface, _scene : &Scene) -> LightSample {
+        unimplemented!()
+    }
 }
 
 impl Light for PointLight {
@@ -34,7 +56,7 @@ impl Light for PointLight {
         // Check if surface is shadowed by another object
         if scene.trace_any(&mut shadow_ray).is_none() 
         {
-            let irradiance = self.intensity/(f64::consts::PI*4.*diff.length_sqr());
+            let irradiance = self.intensity/diff.length_sqr();
             Some( (light_direction, irradiance) )
         } else {
             None

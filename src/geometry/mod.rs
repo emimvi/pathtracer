@@ -5,9 +5,10 @@ pub mod surface;
 pub use self::surface::Surface;
 
 use material::*;
-use std::sync::*;
 use std::f64;
 use vec3::*;
+
+use bvh::*;
 
 pub trait Intersectable : Sync {
     fn intersect(&self, ray : &mut Ray) -> Option<Surface>;
@@ -17,13 +18,11 @@ pub trait Intersectable : Sync {
 pub struct Sphere {
     pub center : Vec3, 
     pub radius : f64, 
-    pub material : Arc<Material>  
 }
 #[derive(Debug, Clone)]
 pub struct Plane  {
     pub origin : Vec3, 
     pub normal : Vec3, 
-    pub material : Arc<Material> 
 }
 
 impl Intersectable for Plane {
@@ -41,8 +40,7 @@ impl Intersectable for Plane {
 
         ray.t_max = t;
         let surface = Surface::new(ray.origin + ray.direction*t, 
-                                self.normal, 
-                                Arc::clone(&self.material));
+                                self.normal);
         Some(surface)
     }
 }
@@ -52,13 +50,13 @@ impl Intersectable for Sphere {
     //Solve sphere equation, substituting in ray parametrisation
     fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
         let p = ray.origin - self.center;
-        let b = 2. * ray.direction.dot(p);
+        let b = ray.direction.dot(p);
         let c = p.dot(p) - self.radius*self.radius;
-        let d = b*b - 4.*c;
-        if d < 0. { return None }
+        if b*b < 0. { return None }
 
-        let t1 = (-b - f64::sqrt(d))/2.;
-        let t2 = (-b + f64::sqrt(d))/2.;
+        let d = f64::sqrt(b*b - c);
+        let t1 = (-b - d);
+        let t2 = (-b + d);
 
         let t = if t1 > ray.t_min  && t1 < ray.t_max {
             t1
@@ -70,7 +68,73 @@ impl Intersectable for Sphere {
         ray.t_max = t;
         let hit_position = ray.origin + ray.direction*t;
         let normal = (hit_position - self.center).normalize();
-        Some(Surface::new(hit_position, normal, Arc::clone(&self.material)))
+
+
+        //Differentials
+        let hit_local = hit_position - self.center;
+        let phi = {
+            let phi = f64::atan2(hit_local.y, hit_local.x);
+            if phi< 0. {phi + 2.*f64::consts::PI} else {phi }
+        };
+        let mut inner = hit_local.z / self.radius;
+        if inner < -1. { inner = 1. }
+        else if inner >= 1. {inner = 1.}
+        let mut theta = f64::acos(inner);
+
+        let zRadius = f64::sqrt(hit_local.x * hit_local.x + hit_local.y * hit_local.y);
+        let invZRadius = 1. / zRadius;
+        let cos_phi = hit_local.x*invZRadius;
+        let sin_phi = hit_local.y*invZRadius;
+
+        let dpdu = Vec3::new(-2.*f64::consts::PI*hit_local.y, 2.*f64::consts::PI*hit_local.x, 0.);
+        let dpdv = Vec3::new(hit_local.z * cos_phi, hit_local.z*sin_phi, -self.radius*f64::sin(theta)) * -f64::consts::PI;
+
+
+        // Compute sphere $\dndu$ and $\dndv$
+        let d2Pduu = -2.*f64::consts::PI * 2.*f64::consts::PI * Vec3::new(hit_local.x, hit_local.y, 0.);
+        let d2Pduv =
+            (-f64::consts::PI) * hit_local.z * 2.*f64::consts::PI * Vec3::new(-sin_phi, cos_phi, 0.);
+        let d2Pdvv = -(-f64::consts::PI) * (-f64::consts::PI) *
+                          Vec3::new(hit_local.x, hit_local.y, hit_local.z);
+
+
+
+        // Compute coefficients for fundamental forms
+        let E = Vec3::dot(dpdu, dpdu);
+        let F = Vec3::dot(dpdu, dpdv);
+        let G = Vec3::dot(dpdv, dpdv);
+        let N = Vec3::normalize(Vec3::cross(dpdu, dpdv));
+        let e = Vec3::dot(N, d2Pduu);
+        let f = Vec3::dot(N, d2Pduv);
+        let g = Vec3::dot(N, d2Pdvv);
+
+        // Compute $\dndu$ and $\dndv$ from fundamental form coefficients
+        let invEGF2 = 1. / (E * G - F * F);
+        let dndu = ((f * F - e * G) * invEGF2 * dpdu +
+                                 (e * F - f * E) * invEGF2 * dpdv);
+        let dndv = ((g * F - f * G) * invEGF2 * dpdu +
+                                 (f * F - g * E) * invEGF2 * dpdv);
+
+        //println!("{} {} {} {}", hit_local, d2Pduu, d2Pduv, d2Pdvv );
+
+        let mut surface = Surface {
+            position : hit_position,
+            normal,
+            dpdu,
+            dpdv,
+            dndu,
+            dndv,
+            ..Surface::default()
+        };
+        surface.calculate_differentials(&ray);
+
+        Some(surface)
     }
 }
 
+impl Boundable for Sphere {
+    fn bounds(&self, _: f32, _: f32) -> BBox {
+        BBox::span(self.center + Vec3::new(-self.radius, -self.radius, -self.radius),
+                   self.center + Vec3::new(self.radius, self.radius, self.radius))
+    }
+}

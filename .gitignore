@@ -1,4 +1,5 @@
 target
 *.swp
 *.swo
+*.ppm
 .DS_Store

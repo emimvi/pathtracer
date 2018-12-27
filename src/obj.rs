@@ -4,18 +4,22 @@ use tobj;
 use vec3::*;
 use geometry::*;
 use material::*;
+use microfacet::*;
 use mipmap::*;
+use lights::*;
+use rand;
 
 use std::sync::{Weak, RwLock, Arc, LockResult, RwLockReadGuard};
 use bvh::{Geometry, BBox, Boundable, BVH};
 
-struct TriangleMesh(Arc<RwLock<TriMesh>>);
+#[derive(Clone)]
+pub struct TriangleMesh(Arc<RwLock<TriMesh>>);
 
 impl TriangleMesh {
-    fn new(vertices : Vec<Vec3> , faces : Vec<[usize ; 3]>, material : Material, texture_coordinates : Option<Vec<Vec2>>) -> TriangleMesh {
-        let mesh = Arc::new(RwLock::new(TriMesh::new(vertices, vec!(), material, texture_coordinates)));
+    pub fn new(vertices : Vec<Vec3> , faces : Vec<[usize ; 3]>, texture_coordinates : Option<Vec<Vec2>>) -> TriangleMesh {
+        let mesh = Arc::new(RwLock::new(TriMesh::new(vertices, vec!(), texture_coordinates)));
         {
-            let bvh = BVH::unanimated(16, {
+            let bvh = BVH::new({
                 faces.iter().map(|face| {
                     Triangle {
                         face : *face,
@@ -29,16 +33,29 @@ impl TriangleMesh {
         TriangleMesh(mesh)
     }
 
+    pub fn get_ref<F, R>(&self, func : F) -> R 
+        where F : Fn(&TriMesh) -> R  {
+        let mesh = self.0.read().unwrap();
+        func(&mesh)
+    }
 }
 
 pub struct TriMesh {
     vertices : Vec<Vec3>,
     faces : BVH<Triangle>,
     texture_coordinates : Option<Vec<Vec2>>,
-    material : Arc<Material>
 }
 
-struct Triangle {
+//impl TriMesh {
+//    pub fn get_random_face(&self) -> &Triangle {
+//        let index = (rand::random::<f64>()*self.faces.len() as f64) as usize;
+//        let triangle : &Triangle = self.faces.get(index);
+//        triangle
+//    }
+//}
+
+#[derive(Clone)]
+pub struct Triangle {
     parent : Weak<RwLock<TriMesh>>,
     face : [usize ; 3]
 }
@@ -56,17 +73,16 @@ impl Intersectable for TriangleMesh {
 impl Intersectable for TriMesh {
 
     #[inline]
-    fn intersect(&self, mut ray : &mut Ray) -> Option<Surface> {
-        self.faces.intersect(&mut ray, |r,i| i.intersect(r))
+    fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
+        self.faces.intersect(ray)
     }
 }
 
 impl TriMesh {
-    fn new(vertices : Vec<Vec3> , _faces : Vec<[usize ; 3]>, material : Material, texture_coordinates : Option<Vec<Vec2>>) -> TriMesh {
+    fn new(vertices : Vec<Vec3> , _faces : Vec<[usize ; 3]>, texture_coordinates : Option<Vec<Vec2>>) -> TriMesh {
         TriMesh{
             vertices,
             faces : BVH::empty(),
-            material: Arc::new(material),
             texture_coordinates
         }
     }
@@ -107,7 +123,7 @@ impl Triangle {
         func(&mesh)
     }
 
-    fn get_vertices(&self) -> (Vec3, Vec3, Vec3) {
+    pub fn get_vertices(&self) -> (Vec3, Vec3, Vec3) {
         self.parent(|mesh|{
             (mesh.vertices[self.face[0]],
              mesh.vertices[self.face[1]],
@@ -123,12 +139,6 @@ impl Triangle {
                 [ Vec2::new(0.,0.), Vec2::new(1.0, 0.), Vec2::new(1., 1.) ] 
             };
             uvs
-        })
-    }
-
-    fn get_material(&self) -> Arc<Material> {
-        self.parent(|mesh|{
-            Arc::clone(&mesh.material)
         })
     }
 }
@@ -175,16 +185,11 @@ impl Intersectable for Triangle {
         let mut surface = Surface{ 
             position: ray.origin + ray.direction*t, 
             normal : -normal.normalize(),// Let the counterclockwise wound side face forward
-            material : Arc::clone(&self.get_material()),
             uv,
             dpdu : dpdu ,
             dpdv : dpdv ,
-            dpdx : Vec3::zero(),
-            dpdy : Vec3::zero(),
-            dudx : 0.0,
-            dudy : 0.0,
-            dvdx : 0.0,
-            dvdy : 0.0 };
+            ..Surface::default()
+        };
 
         surface.calculate_differentials(&ray);
         Some(surface)
@@ -192,11 +197,12 @@ impl Intersectable for Triangle {
 
 }
 
-pub fn load_obj(obj_name : &Path) -> Vec<Geometry> {
+pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<Light>>) {
     let obj = tobj::load_obj(obj_name);
     let (models, materials) = obj.expect(&format!("Failed to load {}: ", obj_name.display()));
 
     let mut meshes : Vec<Geometry> = Vec::new();
+    let mut lights : Vec<Box<Light>> = Vec::new();
     models.iter().for_each(|model| {
 
         //Vertices: Collect flattened vertices into Vec3's
@@ -217,6 +223,8 @@ pub fn load_obj(obj_name : &Path) -> Vec<Geometry> {
                 specular: Vec3::from(tobj_material.specular),
                 ambient: Vec3::from(tobj_material.ambient),
                 illumination_model: IlluminationModel::from(*illum),
+                roughness: tobj_material.shininess as f64,
+                micro : Some(Glossy::new(tobj_material.shininess as f64, 1.5, Vec3::from(tobj_material.diffuse))),
                 texture : if !tobj_material.diffuse_texture.is_empty() {
                     let mip_map = match MipMap::load(Path::new(&tobj_material.diffuse_texture)) {
                         Ok(map) => map,
@@ -224,6 +232,7 @@ pub fn load_obj(obj_name : &Path) -> Vec<Geometry> {
                     };
                     Some(mip_map) 
                 } else { None }
+                , ..Material::default()
             }
             } else {Material::default() }
         } else {
@@ -251,15 +260,21 @@ pub fn load_obj(obj_name : &Path) -> Vec<Geometry> {
             faces.push(face);
         }
 
-        let tri_mesh = TriangleMesh::new(vertices, faces, material, texture_coordinates);       
+        let is_lightsource = material.is_emissive();
 
+        let tri_mesh = TriangleMesh::new(vertices, faces, texture_coordinates);       
 
-        let geo : Geometry = Geometry::new(tri_mesh);
+        if is_lightsource {
+            let area_light = AreaLight::new(&tri_mesh);
+            lights.push(Box::new(area_light));
+        }
+
+        let geo : Geometry = Geometry::new(tri_mesh, material);
 
         meshes.push(geo);
     });
 
-    meshes
+    (meshes, lights)
 }
 
 

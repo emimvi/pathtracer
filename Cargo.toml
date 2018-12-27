@@ -9,6 +9,5 @@ rayon = "1.0.1"
 tobj = "0.1.6"
 image = "*"
 bvh = { path = "/Users/Imbert/Documents/Playground/rust/bvh" }
-
-[profile.release]
-debug = true
+clap = "~2.32"
+lazy_static = "1.2.0"

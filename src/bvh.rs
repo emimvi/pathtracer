@@ -1,11 +1,46 @@
 
 use extern_bvh::{ray::RayT, vector::Vector};
 
-pub use extern_bvh::{Boundable, BBox, BVH};
+pub use extern_bvh::{Boundable, BBox, BVH as e_BVH};
 
 use geometry::{Intersectable, Surface, Ray};
 use vec3::*;
+use material::*;
+use std::sync::Arc;
 
+
+pub struct BVH<T> where T : Shape {
+    geometry : e_BVH<T>
+}
+
+impl<T> BVH<T> where T : Shape {
+    pub fn new(geometry : Vec<T>) -> Self {
+        BVH {
+            geometry : e_BVH::unanimated(8, geometry)
+        }
+    }
+
+    pub fn empty() -> Self {
+        BVH {
+            geometry : e_BVH::empty()
+        }
+    }
+}
+
+impl<T> Boundable for BVH<T> where T : Shape {
+    #[inline]
+    fn bounds(&self, a : f32, b : f32) -> BBox {
+        self.geometry.bounds(a, b)
+    }
+}
+
+
+impl<T> Intersectable for BVH<T> where T : Shape {
+    #[inline]
+    fn intersect(&self, mut ray : &mut Ray) -> Option<Surface> {
+        self.geometry.intersect(&mut ray, |r, i| i.intersect(r))
+    }
+}
 
 impl<'a> RayT for &'a mut Ray {
     #[inline]
@@ -18,20 +53,22 @@ impl<'a> RayT for &'a mut Ray {
     fn t_max(&self) -> f32 { self.t_max as f32 }
 
     #[inline]
-    fn t_min(&self) -> f32 { self.t_min as f32}
+    fn t_min(&self) -> f32 { self.t_min as f32 }
 }
 
-pub trait Object : Intersectable + Boundable {}
-impl<T> Object for T where T: Intersectable + Boundable {}
+pub trait Shape : Intersectable + Boundable {}
+impl<T> Shape for T where T: Intersectable + Boundable {}
 
 pub struct Geometry {
-    pub object : Box<dyn Object>
+    pub shape : Box<dyn Shape>,
+    pub material : Arc<Material>
 }
 
 impl Geometry {
-    pub fn new(obj : impl Object + 'static) -> Geometry {
+    pub fn new(obj : impl Shape + 'static, material : Material) -> Geometry {
         Geometry {
-            object: Box::new(obj)
+            shape: Box::new(obj),
+            material : Arc::new(material)
         }
     }
 }
@@ -39,14 +76,18 @@ impl Geometry {
 impl Intersectable for Geometry {
     #[inline]
     fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
-        self.object.intersect(ray)
+        if let Some(mut surface) = self.shape.intersect(ray) {
+            surface.material = Some(self.material.clone());
+            return Some(surface)
+        } 
+        None
     }
 }
 
 impl Boundable for Geometry {
     #[inline]
     fn bounds(&self, a : f32, b : f32) -> BBox {
-        self.object.bounds(a, b)
+        self.shape.bounds(a, b)
     }
 }
 

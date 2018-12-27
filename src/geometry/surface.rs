@@ -5,10 +5,12 @@ use vec3::*;
 #[derive(Debug, Clone)]
 pub struct Surface { pub position : Vec3,
                          pub normal: Vec3,
-                         pub material :  Arc<Material>,
+                         pub material :  Option<Arc<Material>>,
                          pub uv : Vec2,
                          pub dpdu : Vec3,
                          pub dpdv : Vec3,
+                         pub dndu : Vec3,
+                         pub dndv : Vec3,
                          pub dpdx : Vec3,
                          pub dpdy : Vec3,
                          pub dudx : f64,
@@ -16,56 +18,82 @@ pub struct Surface { pub position : Vec3,
                          pub dvdx : f64,
                          pub dvdy : f64,
                         }
-impl Surface {
-    pub fn new(position : Vec3, normal : Vec3, material : Arc<Material>) -> Surface {
-        Surface { position, 
-                  normal, 
-                  material : Arc::clone(&material),
+
+impl Default for Surface {
+    fn default() -> Surface {
+        Surface { position : Vec3::zero(), 
+                  normal : Vec3::new(0.,1.,0.), 
+                  material : None,
                   uv : Vec2::from([0., 0.]),
                   dpdu : Vec3::zero(), //How much does the world position change pr. uv-coodinate
                   dpdv : Vec3::zero(),
                   dpdx : Vec3::zero(), //How much does the world position AT AN INTERSECTION change wrt. a given camera ray.
                   dpdy : Vec3::zero(),
+                  dndu : Vec3::zero(),
+                  dndv : Vec3::zero(),
                   dudx : 0.,
                   dudy : 0.,
                   dvdx : 0.,
                   dvdy : 0.
         }
     }
+}
+
+impl Surface {
+    pub fn new(position : Vec3, normal : Vec3) -> Surface {
+        Surface { position, 
+                  normal, 
+                  ..Surface::default()
+        }
+    }
 
    pub fn calculate_differentials(&mut self, ray : &Ray) {
-        //pbrt. Chapter 10, p601
-        let d = self.normal.dot(self.position);
+       if !::CONFIG.use_diffs {
+           return;
+       }
+       //pbrt. Chapter 10, p601
+       let d = self.normal.dot(self.position);
 
-        //Distance of the dx ray to the surface
-        let tx = -(self.normal.dot(ray.rx_origin) - d) / self.normal.dot(ray.rx_direction);
-        let px = ray.rx_origin + tx * ray.rx_direction;
+       //Distance of the dx ray to the surface
+       let tx = -(self.normal.dot(ray.rx_origin) - d) / self.normal.dot(ray.rx_direction);
+       let px = ray.rx_origin + tx * ray.rx_direction;
 
-        let ty = -(self.normal.dot(ray.ry_origin) - d) / self.normal.dot(ray.ry_direction);
-        let py = ray.ry_origin + ty * ray.ry_direction;
+       let ty = -(self.normal.dot(ray.ry_origin) - d) / self.normal.dot(ray.ry_direction);
+       let py = ray.ry_origin + ty * ray.ry_direction;
+       if f64::is_infinite(tx) || f64::is_nan(tx) || f64::is_infinite(ty) || f64::is_nan(ty){
+           self.dudx = 0.;
+           self.dvdx = 0.;
+           self.dudy = 0.;
+           self.dvdy = 0.;
+           self.dpdx = Vec3::zero();
+           self.dpdy = Vec3::zero();
+           return;
+       }
 
-        self.dpdx = px - self.position;
-        self.dpdy = py - self.position;
 
-        let dim = if f64::abs(self.normal.x) > f64::abs(self.normal.y) 
-                  && f64::abs(self.normal.x) > f64::abs(self.normal.z) {
-            (1,2)
-        } else if f64::abs(self.normal.y) > f64::abs(self.normal.z) {
-            (0,2)
-        } else {
-            (0,1)
-        };
 
-        let mat_a = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
-                      [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
-        let mat_bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
-        let mat_by = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
-        let (dudx, dvdx) = solve_linear_system_2x2(mat_a, mat_bx);
-        self.dudx = dudx;
-        self.dvdx = dvdx;
-        let (dudy, dvdy) = solve_linear_system_2x2(mat_a, mat_by);
-        self.dudy = dudy;
-        self.dvdy = dvdy;
+       self.dpdx = px - self.position;
+       self.dpdy = py - self.position;
+
+       let dim = if f64::abs(self.normal.x) > f64::abs(self.normal.y) 
+           && f64::abs(self.normal.x) > f64::abs(self.normal.z) {
+               (1,2)
+           } else if f64::abs(self.normal.y) > f64::abs(self.normal.z) {
+               (0,2)
+           } else {
+               (0,1)
+           };
+
+       let mat_a = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
+       [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
+       let mat_bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
+       let mat_by = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
+       let (dudx, dvdx) = solve_linear_system_2x2(mat_a, mat_bx);
+       self.dudx = dudx;
+       self.dvdx = dvdx;
+       let (dudy, dvdy) = solve_linear_system_2x2(mat_a, mat_by);
+       self.dudy = dudy;
+       self.dvdy = dvdy;
 
    }
 }

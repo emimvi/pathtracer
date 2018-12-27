@@ -118,7 +118,10 @@ impl MipMap  {
             //let iLevel = std::floor(level);
             //Float delta = level - iLevel;
             //return Lerp(delta, triangle(iLevel, st), triangle(iLevel + 1, st));
-            level = f64::floor(level);
+            level = f64::round(level);
+            if level == n_levels {
+                level = level-1.;
+            }
         }
         let level = level as usize;
 
@@ -149,6 +152,23 @@ impl MipMap  {
             }
         }
         half_resolution
+    }
+
+    pub fn rainbow() -> MipMap {
+        let mut rainbow = Vec::new();
+        for (i, color) in RAINBOW.iter().enumerate() {
+            let size = 1 << (RAINBOW.len()-1-i);
+            let data = vec!(color.clone()/255.; size*size);
+            let image = Image {
+                data,
+                height : size,
+                width : size
+            };
+            rainbow.push(image);
+        }
+        MipMap {
+            pyramid : rainbow
+        }
     }
 
 }

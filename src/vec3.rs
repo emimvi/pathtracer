@@ -3,14 +3,15 @@ use std::f64;
 use std::fmt;
 
 #[derive(Debug, Copy, Clone)]
-pub struct Vec3 {
-    pub x: f64, 
-    pub y: f64, 
-    pub z: f64 
+pub struct Vec3<T = f64> {
+    pub x: T, 
+    pub y: T, 
+    pub z: T 
 }
 
 pub const BLACK : Vec3 =  Vec3{x : 0., y : 0., z: 0.};
 pub const WHITE : Vec3 =  Vec3{x : 255., y : 255., z: 255.};
+pub const GREY : Vec3 =  Vec3{x : 128., y : 128., z: 128.};
 pub const VIOLET : Vec3 =  Vec3{x : 148., y : 0., z: 211.};
 pub const INDIGO : Vec3 =  Vec3{x : 75., y : 0., z: 130.};
 pub const BLUE : Vec3 =  Vec3{x : 0., y : 0., z: 255.};
@@ -20,7 +21,7 @@ pub const YELLOW : Vec3 =  Vec3{x : 255., y : 255., z: 0.};
 pub const ORANGE : Vec3 =  Vec3{x : 255., y : 127., z: 0.};
 pub const OR_RED : Vec3 =  Vec3{x : 226., y : 87., z: 30.};
 pub const RED : Vec3 =  Vec3{x : 255., y : 0., z: 0.};
-pub const RAINBOW : [Vec3 ; 10] =  [RED, OR_RED, ORANGE, YELLOW, GREEN, DARK_GREEN, BLUE, INDIGO, VIOLET, WHITE];
+pub const RAINBOW : [Vec3 ; 11] =  [RED, OR_RED, ORANGE, YELLOW, GREEN, DARK_GREEN, BLUE, INDIGO, VIOLET, GREY, WHITE];
 
 impl fmt::Display for Vec3 {
     fn fmt(&self, fmt : &mut fmt::Formatter) -> fmt::Result {

@@ -170,18 +170,17 @@ impl Intersectable for Triangle {
         }
         ray.t_max = t;
 
-        let uvs = self.get_texture_coordinates();
+        let uvs : [Vec2; 3] = self.get_texture_coordinates();
+
+        //Partial derivatives: pbrt p. 163 triangle.cpp
+        let (dp02,dp12) : (Vec3, Vec3) = (v0 - v2, v1 - v2);
+        let (duv02,duv12) : (Vec2, Vec2) = (uvs[0] - uvs[2], uvs[1] - uvs[2]);
+        let determinant : f64 = duv02[0] * duv12[1] - duv02[1] * duv12[0];
+        let inverse_det : f64 = 1. / determinant;
+        let dpdu : Vec3 = ( duv12[1] * dp02 - duv02[1] * dp12) * inverse_det;
+        let dpdv : Vec3 = (-duv12[0] * dp02 + duv02[0] * dp12) * inverse_det;
+
         let uv = uvs[0]*u + uvs[1]*v + uvs[2]*w;
-
-        //Partial derivatives: pbrt triangle.cpp
-        let duv02 = uvs[0] - uvs[2];
-        let duv12 = uvs[1] - uvs[2];
-        let (dp02,dp12) = (v0 - v2, v1 - v2);
-        let determinant = duv02[0] * duv12[1] - duv02[1] * duv12[0];
-        let inverse_det = 1. / determinant;
-        let dpdu = ( duv12[1] * dp02 - duv02[1] * dp12) * inverse_det;
-        let dpdv = (-duv12[0] * dp02 + duv02[0] * dp12) * inverse_det;
-
         let mut surface = Surface{ 
             position: ray.origin + ray.direction*t, 
             normal : -normal.normalize(),// Let the counterclockwise wound side face forward

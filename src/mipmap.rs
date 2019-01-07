@@ -34,11 +34,7 @@ impl Image {
     }
 
     fn get_pixel(&self, s : usize, t : usize) -> Vec3 {
-        if s >= self.width || t >= self.height {
-            Vec3::zero()
-        } else {  
-            self[t][s]
-        }
+            self[usize::min(t,self.height-1)][usize::min(s,self.width-1)]
     }
 }
 
@@ -106,26 +102,26 @@ impl MipMap  {
         ds       * dt         * self.pyramid[level].get_pixel(s0+1,t0+1)
     }
 
-    pub fn sample_mipmap(&self, u: f64, v: f64, width : f64) -> Vec3 {
-        let n_levels = self.pyramid.len() as f64;
+    pub fn sample_mipmap(&self, u: f64, v: f64, duvdx : [f64;2], duvdy : [f64;2]) -> Vec3 {
+        let lerp = |t, a, b| (1.-t)*a + t*b;
+        let (dudx, dvdx) = (duvdx[0],duvdx[1]);
+        let (dudy, dvdy) = (duvdy[0],duvdy[1]);
 
-        let mut level = n_levels - 1. + f64::log2(f64::max(width, 1e-8));
+        let n_levels = self.pyramid.len();
+        let width = f64::max(f64::max(f64::abs(dudx),
+                                      f64::abs(dvdx)),
+                             f64::max(f64::abs(dudy),
+                                      f64::abs(dvdy)));
+        let level = n_levels as f64 - 1. + f64::log2(f64::max(width, 1e-8));
         if level < 0. {
-            level = 0.; 
-        } else if level >= n_levels - 1. {
-            level = n_levels - 1.;
+            self.triangle(0, [u, v])
+        } else if level >= (n_levels as f64) - 1. {
+            self.pyramid[n_levels-1][0][0]
         } else {
-            //let iLevel = std::floor(level);
-            //Float delta = level - iLevel;
-            //return Lerp(delta, triangle(iLevel, st), triangle(iLevel + 1, st));
-            level = f64::round(level);
-            if level == n_levels {
-                level = level-1.;
-            }
+            let ilevel = f64::floor(level) as usize;
+            let delta = level - (ilevel as f64);
+            lerp(delta, self.triangle(ilevel, [u, v]), self.triangle(ilevel+1, [u, v]))
         }
-        let level = level as usize;
-
-        return self.triangle(level, [u, v]);
     }
 
     pub fn sample_nearest(&self, u: f64, v: f64) -> Vec3 {
@@ -148,7 +144,7 @@ impl MipMap  {
                                width };
         for i in ( 0..image.height-1 ).rev().step_by(2) {
             for j in ( 0..image.width ).step_by(2) {
-                half_resolution.data.push( (image[i][j]+image[i+1][j]+image[i][j+1]+image[i+1][j+1] ) / 4.);
+                half_resolution.data.push( (image[i][j]+image[i+1][j]+image[i][j+1]+image[i+1][j+1] ) * 0.25);
             }
         }
         half_resolution
@@ -184,7 +180,5 @@ impl MipMap  {
 //}
 
 fn clamp(x : f64) -> f64 {
-    if x < 0. { 0. } 
-    else if x > 1. { 1. }
-    else { x }
+    if x < 0. { 0. } else if x > 1. { 1. } else { x }
 }

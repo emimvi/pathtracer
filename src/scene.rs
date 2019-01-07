@@ -35,12 +35,13 @@ impl Camera {
     }
 
     pub fn ray(&self, x : f64, y: f64, pixel_delta_x : f64, pixel_delta_y: f64) -> Ray {
-        let view_dir = self.view_direction * self.camera_const;
 
         let ip_axes0 = -(self.view_direction.cross(self.up_direction)).normalize();
         let ip_axes1 = -(ip_axes0.cross(self.view_direction)).normalize();
 
+
         //normalize(ip_normal + ip_axes[0]*coords[0] + ip_axes[1]*coords[1]);
+        let view_dir = self.view_direction * self.camera_const;
         let ray_dir = (view_dir + ip_axes0*x + ip_axes1*y).normalize();
 
         let mut ray = Ray::new(self.eye, ray_dir);
@@ -70,12 +71,27 @@ impl Scene {
         let eye = Vec3::new(0.,3.,2.);
         let direction = Vec3::new(0., -1., 1.).normalize();
         let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 1.);
+        
+        //let eye = Vec3::new(0.,3.,-7.);
+        //let direction = Vec3::new(0., -0.2, 1.).normalize();
+        //let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 4.);
 
         let (mut objects, _) = obj::load_obj(&Path::new("/Users/Imbert/Documents/DTU/thesis/tracer/models/glossy_planes.obj"));
+
+        //let mut material = Material::constant(Vec3::new(0.5, 0.5, 0.5));
+        //let rainbow = MipMap::rainbow();
+        //material.texture = Some(rainbow);
+        //let arc = Arc::new(material);
+        //for mut geometry in &mut objects.iter_mut() {
+        //    if geometry.material.texture.is_some() {
+        //        geometry.material = Arc::clone(&arc);
+        //    }
+        //}
+        
         let sphere = Sphere { center : Vec3::new(0., 0.5, 3.), 
                               radius : 0.5, 
                               };
-        objects.push(Geometry::new(sphere      , Material::mirror()));
+        //objects.push(Geometry::new(sphere      , Material::mirror()));
 
         let bvh = BVH::new(objects);
         //let bvh = BVH::unanimated(16, objects);        
@@ -88,7 +104,7 @@ impl Scene {
     }
 
     pub fn quad() -> Scene {
-        let eye = Vec3::new(0.0,0.0,-1.);
+        let eye = Vec3::new(0.0,0.0,0.);
         let direction = Vec3::new(0., 0., 1.).normalize();
         let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 1.);
 
@@ -100,23 +116,23 @@ impl Scene {
         let sphere_g = Sphere { center : Vec3::new(0.5, 0.0, 0.), 
                               radius : 0.5, 
                               };
-        objects.push(Geometry::new(sphere      , Material::mirror()));
-        objects.push(Geometry::new(sphere_g      , Material::glass()));
+        //objects.push(Geometry::new(sphere      , Material::mirror()));
+        //objects.push(Geometry::new(sphere_g      , Material::glass()));
 
-        //let mut material = Material::constant(Vec3::new(0.5, 0.5, 0.5));
-        //let rainbow = MipMap::rainbow();
-        //material.texture = Some(rainbow);
-        //let arc = Arc::new(material);
-        //for mut geometry in &mut objects.iter_mut() {
-        //    geometry.material = Arc::clone(&arc);
-        //}
+        let mut material = Material::constant(Vec3::new(0.5, 0.5, 0.5));
+        let rainbow = MipMap::rainbow();
+        material.texture = Some(rainbow);
+        let arc = Arc::new(material);
+        for mut geometry in &mut objects.iter_mut() {
+            geometry.material = Arc::clone(&arc);
+        }
 
 
         let bvh = BVH::new(objects);
         //let bvh = BVH::unanimated(16, objects);        
 
         let background = Vec3::one()*0.33;
-        let lights : Vec<Box<Light>> = vec!(Box::new( DirectionalLight { direction : Vec3::new(0., -1., 1.).normalize(), radiance : 5. } ));
+        let lights : Vec<Box<Light>> = vec!(Box::new( DirectionalLight { direction : Vec3::new(0., -1., 1.).normalize(), radiance : 3. } ));
         //let lights : Vec<Box<Light>> = Vec::new();
         //let lights : Box<Light> = Box::new(DirectionalLight { direction : Vec3::new(0., 0., 1.), radiance : 3. });
         Scene { objects : bvh, lights, background , camera }

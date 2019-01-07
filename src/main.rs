@@ -71,9 +71,14 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene, trace_dept
             });
             direct_illumination += material.ambient*color;
 
+
             let _indirect_diffuse = {
                 //Use luminance as the probability of a ray getting absorped. 
-                let luminance = (color[0]+color[1]+color[2])/3.; //TODO Importance sample luminance
+                let luminance = if (trace_depth < 5) {
+                    1.
+                } else {
+                    (color[0]+color[1]+color[2])/3. //TODO Importance sample luminance
+                };
                 if luminance < rand::random::<f64>() {
                     Vec3::new(0., 0., 0.)
                 } else {
@@ -96,6 +101,7 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene, trace_dept
                     }
                 }
             };
+
             direct_illumination + _indirect_diffuse
         },
         IlluminationModel::Transparent => {
@@ -124,7 +130,7 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene, trace_dept
             });
             fresnel_r*reflected_radiance + (1.-fresnel_r)*refracted_radiance
         },
-         IlluminationModel::Glossy | IlluminationModel::Micro  => {
+         IlluminationModel::Glossy  => {
             // let (color, _, pdf) = material.micro.as_ref().unwrap().shade(incident_ray, surface); 
             // if pdf == 0. { return Vec3::zero() }
 
@@ -173,26 +179,26 @@ pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene, trace_dept
     }
 }
 
-fn refract_diff(isect : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
-    let mut new_ray = Ray::new(isect.position, new_direction);
+fn refract_diff(surface : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
+    let mut new_ray = Ray::new(surface.position, new_direction);
     if !CONFIG.use_diffs {
         return new_ray;
     }
 
     let wo = -inc_ray.direction;
     let wi = new_ray.direction;
-    let cos_theta = wo.dot(isect.normal);
-    let eta = isect.material.as_ref().unwrap_or_else(|| panic!("No material")).fresnel.as_ref().unwrap_or_else(|| panic!("No fresnel")).eta(cos_theta);
+    let cos_theta = wo.dot(surface.normal);
+    let eta = surface.material.as_ref().unwrap_or_else(|| panic!("No material")).fresnel.as_ref().unwrap_or_else(|| panic!("No fresnel")).eta(cos_theta);
     let normal = if cos_theta < 0. {
-        -isect.normal
+        -surface.normal
     } else {
-        isect.normal
+        surface.normal
     };
 
-    new_ray.rx_origin = isect.position + isect.dpdx;
-    new_ray.ry_origin = isect.position + isect.dpdy;
-    let dndx = isect.dndu * isect.dudx + isect.dndv * isect.dvdx;
-    let dndy = isect.dndu * isect.dudy + isect.dndv * isect.dvdy;
+    new_ray.rx_origin = surface.position + surface.dpdx;
+    new_ray.ry_origin = surface.position + surface.dpdy;
+    let dndx = surface.dndu * surface.dudx + surface.dndv * surface.dvdx;
+    let dndy = surface.dndu * surface.dudy + surface.dndv * surface.dvdy;
     let dwodx = -inc_ray.rx_direction - wo;
     let dwody = -inc_ray.ry_direction - wo;
     let dDNdx = Vec3::dot(dwodx, normal) + Vec3::dot(wo, dndx);
@@ -207,39 +213,50 @@ fn refract_diff(isect : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f6
 }
 
 
-fn reflect_diff(isect : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
-    let mut new_ray = Ray::new(isect.position, new_direction);
+fn reflect_diff(surface : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
+    let mut new_ray = Ray::new(surface.position, new_direction);
     if !CONFIG.use_diffs {
         return new_ray;
     }
+    let wo = -inc_ray.direction;
+    let wi = new_ray.direction;
+
+    new_ray.rx_origin = surface.position + surface.dpdx;
+    new_ray.ry_origin = surface.position + surface.dpdy;
+    use IlluminationModel::*;
+    let material = surface.material.as_ref().unwrap();
+    let material_type = material.illumination_model;
 
     //Set differentials for new ray depending on material.
-    use IlluminationModel::*;
-    let material_type = isect.material.as_ref().unwrap().illumination_model;
-    let x = match material_type {
-        Constant | Lambertian | Glossy => { 
+    match material_type {
+        Lambertian => { 
             let diff_size = CONFIG.diff_size;
-            new_ray.rx_origin = isect.position + isect.dpdx;
-            new_ray.ry_origin = isect.position + isect.dpdy;
+            let (v0, v1) = new_direction.create_tangent_vectors();
+            new_ray.rx_direction = (new_direction + diff_size*v0).normalize();
+            new_ray.ry_direction = (new_direction + diff_size*v1).normalize();
+        },
+        Glossy => { 
+            let diff_size = if !CONFIG.roughdiff {
+                CONFIG.diff_size
+            } else {
+                CONFIG.diff_size*material.roughness / 0.8
+            };
             let (v0, v1) = new_direction.create_tangent_vectors();
             new_ray.rx_direction = (new_direction + diff_size*v0).normalize();
             new_ray.ry_direction = (new_direction + diff_size*v1).normalize();
         },
         Mirror | Transparent => { 
-            let wo = -inc_ray.direction;
-            let wi = new_ray.direction;
-            let cos_theta = wo.dot(isect.normal);
+            //Flip normal if we're inside an object.
+            let cos_theta = wo.dot(surface.normal);
             let normal = if cos_theta < 0. {
-                -isect.normal
+                -surface.normal
             } else {
-                isect.normal
+                surface.normal
             };
-            new_ray.rx_origin = isect.position + isect.dpdx;
-            new_ray.ry_origin = isect.position + isect.dpdy;
-            let dndx = isect.dndu * isect.dudx + isect.dndv * isect.dvdx;
-            let dndy = isect.dndu * isect.dudy + isect.dndv * isect.dvdy;
             let dwodx = -inc_ray.rx_direction - wo;
             let dwody = -inc_ray.ry_direction - wo;
+            let dndx = surface.dndu * surface.dudx + surface.dndv * surface.dvdx;
+            let dndy = surface.dndu * surface.dudy + surface.dndv * surface.dvdy;
             let dDNdx = Vec3::dot(dwodx, normal) + Vec3::dot(wo, dndx);
             let dDNdy = Vec3::dot(dwody, normal) + Vec3::dot(wo, dndy);
             new_ray.rx_direction = wi - dwodx +
@@ -271,7 +288,8 @@ pub struct Config {
     diff_size : f64,
     output : String,
     bounces : usize,
-    use_diffs : bool
+    use_diffs : bool,
+    roughdiff : bool,
 }
 
 
@@ -283,23 +301,28 @@ lazy_static! {
                              --diff [float]       'Differential size'
                              -b [num]            'max Bounces'
                              -o [str]             'Output file'
+                             -r                   'Use roughness based heuristic'
                              --no-diffs            'Disable ray differentials'
                              ").get_matches();
 
         let dim = value_t!(matches, "dim", usize).unwrap_or(512);
         let samples_pr_pixel = value_t!(matches, "samples", usize).unwrap_or(1);
-        let bounces = value_t!(matches, "b", usize).unwrap_or(5);
+        let bounces = value_t!(matches, "b", usize).unwrap_or(10);
         let diff_size = value_t!(matches, "diff", f64).unwrap_or(0.0);
         let diff_string = diff_size.to_string().replace(".", "");
         let use_diffs = !matches.is_present("no-diffs");
+        let roughdiff = matches.is_present("p");
+        let roughdiff_str = if roughdiff { "_p" } else { "" };
 
         let output = matches.value_of("o").unwrap_or("res");
-        let fname = format!("{}_{}_{}spp_df{}_td{}.ppm", 
+        let fname = format!("{}_{}_{}spp_df{}_td{}{}.ppm", 
                             output,
                             dim, 
                             samples_pr_pixel, 
                             if use_diffs {diff_string} else {"nodiffs".to_string()}, 
-                            bounces);
+                            bounces,
+                            roughdiff_str
+                            );
         
         Config {
             dim,
@@ -307,7 +330,8 @@ lazy_static! {
             diff_size,
             output : String::from(fname),
             bounces,
-            use_diffs
+            use_diffs,
+            roughdiff
         }
     };
 }
@@ -319,9 +343,9 @@ fn main() {
     let pixel_size_y = 1./(h as f64);
     let samples_per_pixel = CONFIG.samples_pr_pixel; //This is really n^2!!
 
-    let scene = Scene::cornell_box();
+    //let scene = Scene::cornell_box();
     //let scene = Scene::glossy_planes();
-    //let scene = Scene::quad();
+    let scene = Scene::quad();
 
     //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
     let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
@@ -336,7 +360,7 @@ fn main() {
         let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
 
         let pixel_result = jitters.iter().fold(Vec3::zero(), 
-                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, pixel_size_x as f64, pixel_size_y as f64,  &scene));
+                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, 2.*pixel_size_x as f64, 2.*pixel_size_y as f64,  &scene));
 
         pixel_result/jitters.len() as f64
     }).collect();

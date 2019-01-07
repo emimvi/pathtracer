@@ -3,38 +3,35 @@ use geometry::{Material, Ray};
 use vec3::*;
 
 #[derive(Debug, Clone)]
-pub struct Surface { pub position : Vec3,
-                         pub normal: Vec3,
-                         pub material :  Option<Arc<Material>>,
-                         pub uv : Vec2,
-                         pub dpdu : Vec3,
-                         pub dpdv : Vec3,
-                         pub dndu : Vec3,
-                         pub dndv : Vec3,
-                         pub dpdx : Vec3,
-                         pub dpdy : Vec3,
-                         pub dudx : f64,
-                         pub dudy : f64,
-                         pub dvdx : f64,
-                         pub dvdy : f64,
-                        }
+pub struct Surface { 
+    pub position : Vec3,
+    pub normal: Vec3,
+    pub material :  Option<Arc<Material>>,
+    pub uv : Vec2,
+    pub dpdu : Vec3, pub dpdv : Vec3, // world space / texture space
+    pub dndu : Vec3, pub dndv : Vec3, // normal derivative / texture space
+    pub dpdx : Vec3, pub dpdy : Vec3, // world space / screen space
+    pub dudx : f64 , pub dvdx : f64,  // texture space / screen space x
+    pub dudy : f64 , pub dvdy : f64,  // texture space / screen space y
+}
 
 impl Default for Surface {
     fn default() -> Surface {
-        Surface { position : Vec3::zero(), 
-                  normal : Vec3::new(0.,1.,0.), 
-                  material : None,
-                  uv : Vec2::from([0., 0.]),
-                  dpdu : Vec3::zero(), //How much does the world position change pr. uv-coodinate
-                  dpdv : Vec3::zero(),
-                  dpdx : Vec3::zero(), //How much does the world position AT AN INTERSECTION change wrt. a given camera ray.
-                  dpdy : Vec3::zero(),
-                  dndu : Vec3::zero(),
-                  dndv : Vec3::zero(),
-                  dudx : 0.,
-                  dudy : 0.,
-                  dvdx : 0.,
-                  dvdy : 0.
+        Surface { 
+            position : Vec3::zero(), 
+            normal : Vec3::new(0.,1.,0.), 
+            material : None,
+            uv : Vec2::from([0., 0.]),
+            dpdu : Vec3::zero(), //How much does the world position change pr. uv-coodinate
+            dpdv : Vec3::zero(),
+            dpdx : Vec3::zero(), //How much does the world position AT AN INTERSECTION change wrt. a given camera ray.
+            dpdy : Vec3::zero(),
+            dndu : Vec3::zero(),
+            dndv : Vec3::zero(),
+            dudx : 0.,
+            dudy : 0.,
+            dvdx : 0.,
+            dvdy : 0.
         }
     }
 }
@@ -51,14 +48,16 @@ impl Surface {
        if !::CONFIG.use_diffs {
            return;
        }
-       //pbrt. Chapter 10, p601
+
+       //pbrt. p601
        let d = self.normal.dot(self.position);
+       //Distance of the dx and dy ray to the tangent plane of the surface.
+       let tx = -(self.normal.dot(ray.rx_origin) - d) /
+                self.normal.dot(ray.rx_direction);
+       let ty = -(self.normal.dot(ray.ry_origin) - d) /
+                self.normal.dot(ray.ry_direction);
 
-       //Distance of the dx ray to the surface
-       let tx = -(self.normal.dot(ray.rx_origin) - d) / self.normal.dot(ray.rx_direction);
        let px = ray.rx_origin + tx * ray.rx_direction;
-
-       let ty = -(self.normal.dot(ray.ry_origin) - d) / self.normal.dot(ray.ry_direction);
        let py = ray.ry_origin + ty * ray.ry_direction;
        if f64::is_infinite(tx) || f64::is_nan(tx) || f64::is_infinite(ty) || f64::is_nan(ty){
            self.dudx = 0.;
@@ -69,12 +68,12 @@ impl Surface {
            self.dpdy = Vec3::zero();
            return;
        }
+       let dpdx = px - self.position;
+       let dpdy = py - self.position;
+       self.dpdx = dpdx;
+       self.dpdy = dpdy;
 
-
-
-       self.dpdx = px - self.position;
-       self.dpdy = py - self.position;
-
+       //pbrt. p603
        let dim = if f64::abs(self.normal.x) > f64::abs(self.normal.y) 
            && f64::abs(self.normal.x) > f64::abs(self.normal.z) {
                (1,2)
@@ -83,15 +82,15 @@ impl Surface {
            } else {
                (0,1)
            };
-
        let mat_a = [ [ self.dpdu[dim.0], self.dpdv[dim.0] ],
-       [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
-       let mat_bx = [ px[dim.0] - self.position[dim.0], px[dim.1] - self.position[dim.1] ];
-       let mat_by = [ py[dim.0] - self.position[dim.0], py[dim.1] - self.position[dim.1] ]; 
-       let (dudx, dvdx) = solve_linear_system_2x2(mat_a, mat_bx);
+                     [ self.dpdu[dim.1], self.dpdv[dim.1] ] ];
+       let bx = [ self.dpdx[dim.0], self.dpdx[dim.1] ]; 
+       let by = [ self.dpdy[dim.0], self.dpdy[dim.1] ]; 
+       let (dudx, dvdx) = solve_linear_system_2x2(mat_a, bx);
+       let (dudy, dvdy) = solve_linear_system_2x2(mat_a, by);
+
        self.dudx = dudx;
        self.dvdx = dvdx;
-       let (dudy, dvdy) = solve_linear_system_2x2(mat_a, mat_by);
        self.dudy = dudy;
        self.dvdy = dvdy;
 

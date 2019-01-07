@@ -3,13 +3,13 @@
 
 newmtl tex
 Ns 96.078431
-Ka 1 1 1
+Ka 0 0 0
 Kd 1 1 1
 Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
 Ni 1.000000
 d 1.000000
-map_Kd ./models/spectrum.png
+map_Kd ./models/floor.png
 illum 1
 
 newmtl green
@@ -45,7 +45,7 @@ illum 3
 newmtl white
 Ns 96.078431
 Ka 0 0 0
-Kd 1.00000 1.00000 1.00000
+Kd 0.5 0.5 0.5
 Ks 0.000000 0.000000 0.000000
 Ke 0.000000 0.000000 0.000000
 Ni 1.000000

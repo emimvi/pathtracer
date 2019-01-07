@@ -63,12 +63,7 @@ impl Material {
             let duvdx = [surface.dudx, surface.dvdx];
             let duvdy = [surface.dudy, surface.dvdy];
 
-            let width = f64::max(f64::max(f64::abs(duvdx[0]),
-                                          f64::abs(duvdx[1])),
-                                 f64::max(f64::abs(duvdy[0]),
-                                          f64::abs(duvdy[1])));
-
-            tex.sample_mipmap(st[0], st[1], width)
+            tex.sample_mipmap(st[0], st[1], duvdx, duvdy)
         } else {
             self.diffuse
         }
@@ -103,7 +98,7 @@ impl Material {
         Material {
             name : String::from("glossy"),
             diffuse : color,
-            illumination_model: IlluminationModel::Micro,
+            illumination_model: IlluminationModel::Glossy,
             micro : Some(micro_facet),
             ..Material::default()
         }

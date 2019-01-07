@@ -1,6 +1,17 @@
 # Blender MTL File: 'glossy_planes.blend'
 # Material Count: 8
 
+newmtl floor_tex
+Ka 1.0 1.0 1.0
+Kd 1.0 1.0 1.0
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+#map_Kd /Users/Imbert/Documents/DTU/thesis/tracer/models/spectrum.png
+map_Kd /Users/Imbert/Documents/DTU/thesis/tracer/models/debug.png
+#map_Kd /Users/Imbert/Documents/DTU/thesis/tracer/models/color2.jpg
+illum 0
+
 newmtl Material.001
 Ka 0.0 0.0 0.0
 Kd 1.0 1.0 1.0
@@ -63,13 +74,3 @@ Ni 1.000000
 d 1.000000
 Ns 0.3
 illum 2
-
-newmtl floor_tex
-Ka 1.0 1.0 1.0
-Kd 1.0 1.0 1.0
-Ks 0.500000 0.500000 0.500000
-Ni 1.000000
-d 1.000000
-#map_Kd /Users/Imbert/Documents/DTU/thesis/tracer/models/spectrum.png
-map_Kd /Users/Imbert/Documents/DTU/thesis/tracer/models/color2.jpg
-illum 1

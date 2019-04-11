@@ -9,36 +9,7 @@ use mipmap::*;
 use lights::*;
 use rand;
 
-use std::sync::{Weak, RwLock, Arc, LockResult, RwLockReadGuard};
 use bvh::{Geometry, BBox, Boundable, BVH};
-
-#[derive(Clone)]
-pub struct TriangleMesh(Arc<RwLock<TriMesh>>);
-
-impl TriangleMesh {
-    pub fn new(vertices : Vec<Vec3> , faces : Vec<[usize ; 3]>, texture_coordinates : Option<Vec<Vec2>>) -> TriangleMesh {
-        let mesh = Arc::new(RwLock::new(TriMesh::new(vertices, vec!(), texture_coordinates)));
-        {
-            let bvh = BVH::new({
-                faces.iter().map(|face| {
-                    Triangle {
-                        face : *face,
-                        parent : Arc::downgrade(&(mesh))
-                    }
-                }).collect()});
-
-            let mut p = mesh.write().unwrap();
-            (*p).faces = bvh;
-        }
-        TriangleMesh(mesh)
-    }
-
-    pub fn get_ref<F, R>(&self, func : F) -> R 
-        where F : Fn(&TriMesh) -> R  {
-        let mesh = self.0.read().unwrap();
-        func(&mesh)
-    }
-}
 
 pub struct TriMesh {
     vertices : Vec<Vec3>,
@@ -46,31 +17,15 @@ pub struct TriMesh {
     texture_coordinates : Option<Vec<Vec2>>,
 }
 
-//impl TriMesh {
-//    pub fn get_random_face(&self) -> &Triangle {
-//        let index = (rand::random::<f64>()*self.faces.len() as f64) as usize;
-//        let triangle : &Triangle = self.faces.get(index);
-//        triangle
-//    }
-//}
-
-#[derive(Clone)]
+unsafe impl Send for Triangle {}
+unsafe impl Sync for Triangle {}
 pub struct Triangle {
-    parent : Weak<RwLock<TriMesh>>,
+    parent : *const TriMesh,
     face : [usize ; 3]
 }
 
 
-impl Intersectable for TriangleMesh {
-
-    #[inline]
-    fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
-        let mesh = self.0.read().unwrap();
-        mesh.intersect(ray)
-    }
-}
-
-impl Intersectable for TriMesh {
+impl Intersectable for Box<TriMesh> {
 
     #[inline]
     fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
@@ -79,22 +34,28 @@ impl Intersectable for TriMesh {
 }
 
 impl TriMesh {
-    fn new(vertices : Vec<Vec3> , _faces : Vec<[usize ; 3]>, texture_coordinates : Option<Vec<Vec2>>) -> TriMesh {
-        TriMesh{
+    fn new(vertices : Vec<Vec3> , faces : Vec<[usize ; 3]>, texture_coordinates : Option<Vec<Vec2>>) -> Box<TriMesh> {
+        let mut mesh = Box::new(TriMesh{
             vertices,
             faces : BVH::empty(),
             texture_coordinates
+        });
+        {
+            let bvh = BVH::new({
+                faces.iter().map(|face| {
+                    Triangle {
+                        face : *face,
+                        parent : &*mesh
+                    }
+                }).collect()});
+
+            mesh.faces = bvh;
         }
+        mesh
     }
 }
 
-impl Boundable for TriangleMesh {
-    fn bounds(&self, _a : f32, _b : f32) -> BBox {
-        self.0.read().unwrap().bounds(_a,_b)
-    }
-}
-
-impl Boundable for TriMesh {
+impl Boundable for Box<TriMesh> {
     fn bounds(&self, _a : f32, _b : f32) -> BBox {
         self.faces.bounds(_a, _b)
     }
@@ -111,35 +72,24 @@ impl Boundable for Triangle {
 }
 
 impl Triangle {
-    
-    //Utility function to avoid having to handle the deep structure of TriangleMesh.
-    //Pass in a function that takes a &TriMesh as argument, and returns whatever you want from the
-    //mesh. This is neccesary as we cannot return the reference directly due to the RwLockGuard
-    //going out of scope when the function exits.
-    fn parent<F, R>(&self, func : F) -> R 
-        where F : Fn(&TriMesh) -> R  {
-        let tri_mesh = &*self.parent.upgrade().unwrap();
-        let mesh = tri_mesh.read().unwrap();
-        func(&mesh)
-    }
 
     pub fn get_vertices(&self) -> (Vec3, Vec3, Vec3) {
-        self.parent(|mesh|{
-            (mesh.vertices[self.face[0]],
-             mesh.vertices[self.face[1]],
-             mesh.vertices[self.face[2]])
-        })
+        let mesh = unsafe{ &*self.parent };
+        (mesh.vertices[self.face[0]],
+         mesh.vertices[self.face[1]],
+         mesh.vertices[self.face[2]])
     }
 
     fn get_texture_coordinates(&self) -> [Vec2 ; 3] {
-        self.parent(|mesh|{
-            let uvs : [Vec2 ; 3] = if let Some(tex_coords) = &mesh.texture_coordinates {
-                [tex_coords[self.face[0]], tex_coords[self.face[1]], tex_coords[self.face[2]]]
-            } else { 
-                [ Vec2::new(0.,0.), Vec2::new(1.0, 0.), Vec2::new(1., 1.) ] 
-            };
-            uvs
-        })
+        let mesh = unsafe{ &*self.parent };
+
+        let uvs : [Vec2 ; 3] = if let Some(tex_coords) = &mesh.texture_coordinates {
+            [tex_coords[self.face[0]], tex_coords[self.face[1]], tex_coords[self.face[2]]]
+        } else { 
+            [ Vec2::new(0.,0.), Vec2::new(1.0, 0.), Vec2::new(1., 1.) ] 
+        };
+
+        uvs
     }
 }
 
@@ -162,8 +112,9 @@ impl Intersectable for Triangle {
 
         // Find barycentric coordinates
         let tmp = (v0 - ray.origin).cross(ray.direction);
-        let v = tmp.dot(e1)/ray.direction.dot(normal);
-        let w = tmp.dot(e0)/ray.direction.dot(normal);
+        let denom = 1./ray.direction.dot(normal);
+        let v = tmp.dot(e1)*denom;
+        let w = tmp.dot(e0)*denom;
         let u = 1. - v - w;
         if v < 0.0 || w < 0.0 || v + w > 1.0 {
             return None;
@@ -213,30 +164,48 @@ pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<Light>>) {
         };
 
         //Material:
+        //let material = if let Some(id) = model.mesh.material_id {
+        //    if let Some(illum) = &materials[id].illumination_model {
+        //    let tobj_material = &materials[id];
+        //    Material {
+        //        name : tobj_material.name.clone(),
+        //        diffuse: Vec3::from(tobj_material.diffuse),
+        //        specular: Vec3::from(tobj_material.specular),
+        //        ambient: Vec3::from(tobj_material.ambient),
+        //        illumination_model: IlluminationModel::from(*illum),
+        //        roughness: tobj_material.shininess as f64,
+        //        micro : Some(Glossy::new(tobj_material.shininess as f64, 1.5, Vec3::from(tobj_material.diffuse))),
+        //        texture : if !tobj_material.diffuse_texture.is_empty() {
+        //            let mip_map = match MipMap::load(Path::new(&tobj_material.diffuse_texture)) {
+        //                Ok(map) => map,
+        //                Err(err) => panic!("Failed to load MipMap: {}", err)
+        //            };
+        //            Some(mip_map) 
+        //        } else { None }
+        //        , ..Material::default()
+        //    }
+        //    } else {Material::default() }
+        //} else {
+        //    Material::default()
+        //};
+        //
+        let default = Lambertian { color : Vec3::zero(),
+                                   emission : Vec3::zero()
+                                 };
         let material = if let Some(id) = model.mesh.material_id {
             if let Some(illum) = &materials[id].illumination_model {
-            let tobj_material = &materials[id];
-            Material {
-                name : tobj_material.name.clone(),
-                diffuse: Vec3::from(tobj_material.diffuse),
-                specular: Vec3::from(tobj_material.specular),
-                ambient: Vec3::from(tobj_material.ambient),
-                illumination_model: IlluminationModel::from(*illum),
-                roughness: tobj_material.shininess as f64,
-                micro : Some(Glossy::new(tobj_material.shininess as f64, 1.5, Vec3::from(tobj_material.diffuse))),
-                texture : if !tobj_material.diffuse_texture.is_empty() {
-                    let mip_map = match MipMap::load(Path::new(&tobj_material.diffuse_texture)) {
-                        Ok(map) => map,
-                        Err(err) => panic!("Failed to load MipMap: {}", err)
-                    };
-                    Some(mip_map) 
-                } else { None }
-                , ..Material::default()
+                let tobj_material = &materials[id];
+                Lambertian {
+                    color: Vec3::from(tobj_material.diffuse),
+                    emission: Vec3::from(tobj_material.ambient),
+                }
+            } else {
+                default
             }
-            } else {Material::default() }
         } else {
-            Material::default()
+            default
         };
+
 
         //Texture 
         let tex_coords = &model.mesh.texcoords;
@@ -259,14 +228,7 @@ pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<Light>>) {
             faces.push(face);
         }
 
-        let is_lightsource = material.is_emissive();
-
-        let tri_mesh = TriangleMesh::new(vertices, faces, texture_coordinates);       
-
-        if is_lightsource {
-            let area_light = AreaLight::new(&tri_mesh);
-            lights.push(Box::new(area_light));
-        }
+        let tri_mesh = TriMesh::new(vertices, faces, texture_coordinates);       
 
         let geo : Geometry = Geometry::new(tri_mesh, material);
 

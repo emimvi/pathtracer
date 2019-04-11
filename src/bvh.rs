@@ -61,11 +61,11 @@ impl<T> Shape for T where T: Intersectable + Boundable {}
 
 pub struct Geometry {
     pub shape : Box<dyn Shape>,
-    pub material : Arc<Material>
+    pub material : Arc<dyn _Material>
 }
 
 impl Geometry {
-    pub fn new(obj : impl Shape + 'static, material : Material) -> Geometry {
+    pub fn new(obj : impl Shape + 'static, material : impl _Material + 'static) -> Geometry {
         Geometry {
             shape: Box::new(obj),
             material : Arc::new(material)

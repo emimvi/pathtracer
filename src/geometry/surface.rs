@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use geometry::{Material, Ray};
+use material::*;
 use vec3::*;
 
 #[derive(Debug, Clone)]
 pub struct Surface { 
     pub position : Vec3,
     pub normal: Vec3,
-    pub material :  Option<Arc<Material>>,
+    pub material :  Option<Arc<dyn _Material>>,
     pub uv : Vec2,
     pub dpdu : Vec3, pub dpdv : Vec3, // world space / texture space
     pub dndu : Vec3, pub dndv : Vec3, // normal derivative / texture space

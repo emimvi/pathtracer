@@ -170,6 +170,23 @@ impl Mul<Vec3> for f64 {
     }
 }
 
+impl MulAssign for Vec3 {
+    fn mul_assign(&mut self, other: Vec3) {
+        self.x *= other.x;
+        self.y *= other.y;
+        self.z *= other.z
+    }
+}
+
+impl MulAssign<f64> for Vec3 {
+    fn mul_assign(&mut self, other: f64) {
+        self.x *= other;
+        self.y *= other;
+        self.z *= other
+    }
+}
+
+
 impl Div for Vec3 {
     type Output = Vec3;
     fn div(self, other: Vec3) -> Self {
@@ -184,14 +201,6 @@ impl Div<f64> for Vec3 {
     type Output = Vec3;
     fn div(self, other: f64) -> Self {
         Vec3::new(self.x / other, self.y / other, self.z / other)
-    }
-}
-
-impl MulAssign<f64> for Vec3 {
-    fn mul_assign(&mut self, other: f64) {
-        self.x *= other;
-        self.y *= other;
-        self.z *= other
     }
 }
 

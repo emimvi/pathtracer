@@ -41,243 +41,273 @@ fn sample_cosine_weighted_hemisphere(normal : &Vec3) -> Vec3
 
     spherical_direction.rotate_to(normal)
 }
-
 pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene, trace_depth : usize) -> Vec3 {
-    if trace_depth > CONFIG.bounces { 
-        return Vec3::zero() 
-    };
-    let trace_depth = trace_depth + 1;
-
-    let material = if let Some(m) = surface.material.as_ref() {
-        m
-    } else {
-        return Vec3::new(1.,0.7,0.85) //Pink!
-    };
-    match material.illumination_model {
-        IlluminationModel::Constant => { 
-            material.get_diffuse(&surface) 
-        },
-        IlluminationModel::Lambertian => {
-            let color = material.get_diffuse(&surface);
-            let f = color*f64::consts::FRAC_1_PI;
-            let mut direct_illumination : Vec3 = scene.lights.iter().fold(Vec3::zero(), |prev, light| {
-                if let Some((light_dir, radiance)) = light.sample(surface, scene)
-                {
-                    let angle = f64::max(0., light_dir.dot(surface.normal));
-                    prev + f*angle*radiance
-                } else {
-                    prev
-                }
-            });
-            direct_illumination += material.ambient*color;
-
-
-            let _indirect_diffuse = {
-                //Use luminance as the probability of a ray getting absorped. 
-                let luminance = if (trace_depth < 5) {
-                    1.
-                } else {
-                    (color[0]+color[1]+color[2])/3. //TODO Importance sample luminance
-                };
-                if luminance < rand::random::<f64>() {
-                    Vec3::new(0., 0., 0.)
-                } else {
-                    let mut illumination = Vec3::zero();
-                    let sampled_direction = sample_cosine_weighted_hemisphere(&surface.normal);
-                    let angle = surface.normal.dot(sampled_direction);
-                    let pdf = angle*f64::consts::FRAC_1_PI;
-                    if pdf <= 0. {
-                        Vec3::zero()
-                    } else {
-                        //let mut trace_ray = Ray::new(surface.position, sampled_direction);
-                        let mut trace_ray = reflect_diff(&surface, incident_ray, sampled_direction, pdf);
-                        let mirr_obj = scene.trace_closest(&mut trace_ray);
-                        let color_bleed = mirr_obj.map_or(scene.background, |next_surface| {
-                            shade(&next_surface, &mut trace_ray, &scene, trace_depth)
-                        });
-
-                        illumination += color_bleed * f * angle/ pdf;
-                        illumination / luminance
-                    }
-                }
-            };
-
-            direct_illumination + _indirect_diffuse
-        },
-        IlluminationModel::Transparent => {
-            let fresnel = material.fresnel.as_ref().unwrap();
-            let cos_theta = (-incident_ray.direction).dot(surface.normal);
-            let eta = fresnel.eta(cos_theta);
-            let fresnel_r= fresnel.dielectric(cos_theta);
-            let normal = if cos_theta < 0. {
-                -surface.normal
-            } else {
-                surface.normal
-            };
-
-            let reflected_dir = incident_ray.direction.reflect(normal);
-            let mut trace_ray = reflect_diff(&surface, incident_ray, reflected_dir, 1.);
-            let mirr_obj = scene.trace_closest(&mut trace_ray);
-            let reflected_radiance = mirr_obj.map_or(scene.background, |next_surface| {
-                shade(&next_surface, &mut trace_ray, &scene, trace_depth)
-            });
-
-            let refracted_dir = incident_ray.direction.refract(normal, eta);
-            let mut refracted_ray = refract_diff(&surface, incident_ray, refracted_dir, 1.);
-            let mirr_obj = scene.trace_closest(&mut refracted_ray);
-            let refracted_radiance = mirr_obj.map_or(scene.background, |next_surface| {
-                shade(&next_surface, &mut refracted_ray, &scene, trace_depth)
-            });
-            fresnel_r*reflected_radiance + (1.-fresnel_r)*refracted_radiance
-        },
-         IlluminationModel::Glossy  => {
-            // let (color, _, pdf) = material.micro.as_ref().unwrap().shade(incident_ray, surface); 
-            // if pdf == 0. { return Vec3::zero() }
-
-            let mat = material.micro.as_ref().unwrap();
-            let direct_illum = scene.lights.iter().fold(Vec3::zero(), |prev, light| {
-                            if let Some((light_dir, radiance)) = light.sample(surface, scene)
-                            {
-                                let color = mat.f(-incident_ray.direction, light_dir, surface.normal); 
-                                let angle = f64::max(0.,light_dir.dot(surface.normal));
-                                let r = color*radiance*angle;
-                                prev + r
-                            } else {
-                                prev
-                            }
-                        });
-
-            let indirect_illum = {
-                let (f, direction, pdf) = mat.shade(incident_ray, surface);
-                let cos_theta = direction.dot(surface.normal);
-                if pdf == 0. || cos_theta <= 0. {
-                     Vec3::zero()
-                } else {
-                    let mut trace_ray = reflect_diff(&surface, incident_ray, direction, pdf);
-
-                    let mirr_obj = scene.trace_closest(&mut trace_ray);
-                    let refl_col = mirr_obj.map_or(scene.background, |next_surface| {
-                      shade(&next_surface, &mut trace_ray, &scene, trace_depth)
-                    });
-                    refl_col * f * cos_theta / pdf
-                }
-            };
-
-            direct_illum + indirect_illum
-        },
-        IlluminationModel::Mirror => {
-            let reflected_dir = incident_ray.direction.reflect(surface.normal);
-            let mut trace_ray = reflect_diff(&surface, incident_ray, reflected_dir, 1.);
-            let mirr_obj = scene.trace_closest(&mut trace_ray);
-            mirr_obj.map_or(scene.background, |next_surface| {
-                shade(&next_surface, &mut trace_ray, &scene, trace_depth)
-            })
-        },
-        _ => {
-            panic!(format!("Uknown illumination model: {:?}\n", material.illumination_model))
-        },
-    }
+    Vec3::zero()
 }
 
-fn refract_diff(surface : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
-    let mut new_ray = Ray::new(surface.position, new_direction);
-    if !CONFIG.use_diffs {
-        return new_ray;
-    }
+//pub fn shade(surface : &Surface, incident_ray : &Ray, scene : &Scene, trace_depth : usize) -> Vec3 {
+//    if trace_depth > CONFIG.bounces { 
+//        return Vec3::zero() 
+//    };
+//    let trace_depth = trace_depth + 1;
+//
+//    let material = if let Some(m) = surface.material.as_ref() {
+//        m
+//    } else {
+//        return Vec3::new(1.,0.7,0.85) //Pink!
+//    };
+//    match material.illumination_model {
+//        IlluminationModel::Constant => { 
+//            material.get_diffuse(&surface) 
+//        },
+//        IlluminationModel::Lambertian => {
+//            let color = material.get_diffuse(&surface);
+//            let f = color*f64::consts::FRAC_1_PI;
+//            let mut direct_illumination : Vec3 = scene.lights.iter().fold(Vec3::zero(), |prev, light| {
+//                if let Some((light_dir, radiance)) = light.sample(surface, scene)
+//                {
+//                    let angle = f64::max(0., light_dir.dot(surface.normal));
+//                    prev + f*angle*radiance
+//                } else {
+//                    prev
+//                }
+//            });
+//            direct_illumination += material.ambient*color;
+//
+//
+//            let _indirect_diffuse = {
+//                //Use luminance as the probability of a ray getting absorped. 
+//                let luminance = if (trace_depth < 5) {
+//                    1.
+//                } else {
+//                    (color[0]+color[1]+color[2])/3. //TODO Importance sample luminance
+//                };
+//                if luminance < rand::random::<f64>() {
+//                    Vec3::new(0., 0., 0.)
+//                } else {
+//                    let mut illumination = Vec3::zero();
+//                    let sampled_direction = sample_cosine_weighted_hemisphere(&surface.normal);
+//                    let angle = surface.normal.dot(sampled_direction);
+//                    let pdf = angle*f64::consts::FRAC_1_PI;
+//                    if pdf <= 0. {
+//                        Vec3::zero()
+//                    } else {
+//                        //let mut trace_ray = Ray::new(surface.position, sampled_direction);
+//                        let mut trace_ray = reflect_diff(&surface, incident_ray, sampled_direction, pdf);
+//                        let mirr_obj = scene.trace_closest(&mut trace_ray);
+//                        let color_bleed = mirr_obj.map_or(scene.background, |next_surface| {
+//                            shade(&next_surface, &mut trace_ray, &scene, trace_depth)
+//                        });
+//
+//                        illumination += color_bleed * f * angle/ pdf;
+//                        illumination / luminance
+//                    }
+//                }
+//            };
+//
+//            direct_illumination + _indirect_diffuse
+//        },
+//        IlluminationModel::Transparent => {
+//            let fresnel = material.fresnel.as_ref().unwrap();
+//            let cos_theta = (-incident_ray.direction).dot(surface.normal);
+//            let eta = fresnel.eta(cos_theta);
+//            let fresnel_r= fresnel.dielectric(cos_theta);
+//            let normal = if cos_theta < 0. {
+//                -surface.normal
+//            } else {
+//                surface.normal
+//            };
+//
+//            let reflected_dir = incident_ray.direction.reflect(normal);
+//            let mut trace_ray = reflect_diff(&surface, incident_ray, reflected_dir, 1.);
+//            let mirr_obj = scene.trace_closest(&mut trace_ray);
+//            let reflected_radiance = mirr_obj.map_or(scene.background, |next_surface| {
+//                shade(&next_surface, &mut trace_ray, &scene, trace_depth)
+//            });
+//
+//            let refracted_dir = incident_ray.direction.refract(normal, eta);
+//            let mut refracted_ray = refract_diff(&surface, incident_ray, refracted_dir, 1.);
+//            let mirr_obj = scene.trace_closest(&mut refracted_ray);
+//            let refracted_radiance = mirr_obj.map_or(scene.background, |next_surface| {
+//                shade(&next_surface, &mut refracted_ray, &scene, trace_depth)
+//            });
+//            fresnel_r*reflected_radiance + (1.-fresnel_r)*refracted_radiance
+//        },
+//         IlluminationModel::Glossy  => {
+//            // let (color, _, pdf) = material.micro.as_ref().unwrap().shade(incident_ray, surface); 
+//            // if pdf == 0. { return Vec3::zero() }
+//
+//            let mat = material.micro.as_ref().unwrap();
+//            let direct_illum = scene.lights.iter().fold(Vec3::zero(), |prev, light| {
+//                            if let Some((light_dir, radiance)) = light.sample(surface, scene)
+//                            {
+//                                let color = mat.f(-incident_ray.direction, light_dir, surface.normal); 
+//                                let angle = f64::max(0.,light_dir.dot(surface.normal));
+//                                let r = color*radiance*angle;
+//                                prev + r
+//                            } else {
+//                                prev
+//                            }
+//                        });
+//
+//            let indirect_illum = {
+//                let (f, direction, pdf) = mat.shade(incident_ray, surface);
+//                let cos_theta = direction.dot(surface.normal);
+//                if pdf == 0. || cos_theta <= 0. {
+//                     Vec3::zero()
+//                } else {
+//                    let mut trace_ray = reflect_diff(&surface, incident_ray, direction, pdf);
+//
+//                    let mirr_obj = scene.trace_closest(&mut trace_ray);
+//                    let refl_col = mirr_obj.map_or(scene.background, |next_surface| {
+//                      shade(&next_surface, &mut trace_ray, &scene, trace_depth)
+//                    });
+//                    refl_col * f * cos_theta / pdf
+//                }
+//            };
+//
+//            direct_illum + indirect_illum
+//        },
+//        IlluminationModel::Mirror => {
+//            let reflected_dir = incident_ray.direction.reflect(surface.normal);
+//            let mut trace_ray = reflect_diff(&surface, incident_ray, reflected_dir, 1.);
+//            let mirr_obj = scene.trace_closest(&mut trace_ray);
+//            mirr_obj.map_or(scene.background, |next_surface| {
+//                shade(&next_surface, &mut trace_ray, &scene, trace_depth)
+//            })
+//        },
+//        _ => {
+//            panic!(format!("Uknown illumination model: {:?}\n", material.illumination_model))
+//        },
+//    }
+//}
 
-    let wo = -inc_ray.direction;
-    let wi = new_ray.direction;
-    let cos_theta = wo.dot(surface.normal);
-    let eta = surface.material.as_ref().unwrap_or_else(|| panic!("No material")).fresnel.as_ref().unwrap_or_else(|| panic!("No fresnel")).eta(cos_theta);
-    let normal = if cos_theta < 0. {
-        -surface.normal
-    } else {
-        surface.normal
-    };
-
-    new_ray.rx_origin = surface.position + surface.dpdx;
-    new_ray.ry_origin = surface.position + surface.dpdy;
-    let dndx = surface.dndu * surface.dudx + surface.dndv * surface.dvdx;
-    let dndy = surface.dndu * surface.dudy + surface.dndv * surface.dvdy;
-    let dwodx = -inc_ray.rx_direction - wo;
-    let dwody = -inc_ray.ry_direction - wo;
-    let dDNdx = Vec3::dot(dwodx, normal) + Vec3::dot(wo, dndx);
-    let dDNdy = Vec3::dot(dwody, normal) + Vec3::dot(wo, dndy);
-    let mu = eta * Vec3::dot(-wo, normal) - Vec3::dot(wi, normal);
-    let dmudx = (eta - (eta * eta * Vec3::dot(-wo, normal)) / Vec3::dot(wi, normal)) * dDNdx;
-    let dmudy = (eta - (eta * eta * Vec3::dot(-wo, normal)) / Vec3::dot(wi, normal)) * dDNdy;
-
-    new_ray.rx_direction = wi + eta * dwodx - (mu * dndx + dmudx * normal);
-    new_ray.ry_direction = wi + eta * dwody - (mu * dndy + dmudy * normal);
-    new_ray
-}
-
-
-fn reflect_diff(surface : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
-    let mut new_ray = Ray::new(surface.position, new_direction);
-    if !CONFIG.use_diffs {
-        return new_ray;
-    }
-    let wo = -inc_ray.direction;
-    let wi = new_ray.direction;
-
-    new_ray.rx_origin = surface.position + surface.dpdx;
-    new_ray.ry_origin = surface.position + surface.dpdy;
-    use IlluminationModel::*;
-    let material = surface.material.as_ref().unwrap();
-    let material_type = material.illumination_model;
-
-    //Set differentials for new ray depending on material.
-    match material_type {
-        Lambertian => { 
-            let diff_size = CONFIG.diff_size;
-            let (v0, v1) = new_direction.create_tangent_vectors();
-            new_ray.rx_direction = (new_direction + diff_size*v0).normalize();
-            new_ray.ry_direction = (new_direction + diff_size*v1).normalize();
-        },
-        Glossy => { 
-            let diff_size = if !CONFIG.roughdiff {
-                CONFIG.diff_size
-            } else {
-                CONFIG.diff_size*material.roughness / 0.8
-            };
-            let (v0, v1) = new_direction.create_tangent_vectors();
-            new_ray.rx_direction = (new_direction + diff_size*v0).normalize();
-            new_ray.ry_direction = (new_direction + diff_size*v1).normalize();
-        },
-        Mirror | Transparent => { 
-            //Flip normal if we're inside an object.
-            let cos_theta = wo.dot(surface.normal);
-            let normal = if cos_theta < 0. {
-                -surface.normal
-            } else {
-                surface.normal
-            };
-            let dwodx = -inc_ray.rx_direction - wo;
-            let dwody = -inc_ray.ry_direction - wo;
-            let dndx = surface.dndu * surface.dudx + surface.dndv * surface.dvdx;
-            let dndy = surface.dndu * surface.dudy + surface.dndv * surface.dvdy;
-            let dDNdx = Vec3::dot(dwodx, normal) + Vec3::dot(wo, dndx);
-            let dDNdy = Vec3::dot(dwody, normal) + Vec3::dot(wo, dndy);
-            new_ray.rx_direction = wi - dwodx +
-                2. * (Vec3::dot(wo, normal) * dndx + dDNdx * normal);
-            new_ray.ry_direction = wi - dwody +
-                2. * (Vec3::dot(wo, normal) * dndy + dDNdy * normal);
-        },
-        _ => { panic!("Unsupported illumination model") }
-    };
-
-    new_ray
-}
+//fn refract_diff(surface : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
+//    let mut new_ray = Ray::new(surface.position, new_direction);
+//    if !CONFIG.use_diffs {
+//        return new_ray;
+//    }
+//
+//    let wo = -inc_ray.direction;
+//    let wi = new_ray.direction;
+//    let cos_theta = wo.dot(surface.normal);
+//    let eta = surface.material.as_ref().unwrap_or_else(|| panic!("No material")).fresnel.as_ref().unwrap_or_else(|| panic!("No fresnel")).eta(cos_theta);
+//    let normal = if cos_theta < 0. {
+//        -surface.normal
+//    } else {
+//        surface.normal
+//    };
+//
+//    new_ray.rx_origin = surface.position + surface.dpdx;
+//    new_ray.ry_origin = surface.position + surface.dpdy;
+//    let dndx = surface.dndu * surface.dudx + surface.dndv * surface.dvdx;
+//    let dndy = surface.dndu * surface.dudy + surface.dndv * surface.dvdy;
+//    let dwodx = -inc_ray.rx_direction - wo;
+//    let dwody = -inc_ray.ry_direction - wo;
+//    let dDNdx = Vec3::dot(dwodx, normal) + Vec3::dot(wo, dndx);
+//    let dDNdy = Vec3::dot(dwody, normal) + Vec3::dot(wo, dndy);
+//    let mu = eta * Vec3::dot(-wo, normal) - Vec3::dot(wi, normal);
+//    let dmudx = (eta - (eta * eta * Vec3::dot(-wo, normal)) / Vec3::dot(wi, normal)) * dDNdx;
+//    let dmudy = (eta - (eta * eta * Vec3::dot(-wo, normal)) / Vec3::dot(wi, normal)) * dDNdy;
+//
+//    new_ray.rx_direction = wi + eta * dwodx - (mu * dndx + dmudx * normal);
+//    new_ray.ry_direction = wi + eta * dwody - (mu * dndy + dmudy * normal);
+//    new_ray
+//}
+//
+//
+//fn reflect_diff(surface : &Surface, inc_ray : &Ray, new_direction : Vec3, pdf : f64) -> Ray {
+//    let mut new_ray = Ray::new(surface.position, new_direction);
+//    if !CONFIG.use_diffs {
+//        return new_ray;
+//    }
+//    let wo = -inc_ray.direction;
+//    let wi = new_ray.direction;
+//
+//    new_ray.rx_origin = surface.position + surface.dpdx;
+//    new_ray.ry_origin = surface.position + surface.dpdy;
+//    use IlluminationModel::*;
+//    let material = surface.material.as_ref().unwrap();
+//    let material_type = material.illumination_model;
+//
+//    //Set differentials for new ray depending on material.
+//    match material_type {
+//        Lambertian => { 
+//            let diff_size = CONFIG.diff_size;
+//            let (v0, v1) = new_direction.create_tangent_vectors();
+//            new_ray.rx_direction = (new_direction + diff_size*v0).normalize();
+//            new_ray.ry_direction = (new_direction + diff_size*v1).normalize();
+//        },
+//        Glossy => { 
+//            let diff_size = if !CONFIG.roughdiff {
+//                CONFIG.diff_size
+//            } else {
+//                CONFIG.diff_size*material.roughness / 0.8
+//            };
+//            let (v0, v1) = new_direction.create_tangent_vectors();
+//            new_ray.rx_direction = (new_direction + diff_size*v0).normalize();
+//            new_ray.ry_direction = (new_direction + diff_size*v1).normalize();
+//        },
+//        Mirror | Transparent => { 
+//            //Flip normal if we're inside an object.
+//            let cos_theta = wo.dot(surface.normal);
+//            let normal = if cos_theta < 0. {
+//                -surface.normal
+//            } else {
+//                surface.normal
+//            };
+//            let dwodx = -inc_ray.rx_direction - wo;
+//            let dwody = -inc_ray.ry_direction - wo;
+//            let dndx = surface.dndu * surface.dudx + surface.dndv * surface.dvdx;
+//            let dndy = surface.dndu * surface.dudy + surface.dndv * surface.dvdy;
+//            let dDNdx = Vec3::dot(dwodx, normal) + Vec3::dot(wo, dndx);
+//            let dDNdy = Vec3::dot(dwody, normal) + Vec3::dot(wo, dndy);
+//            new_ray.rx_direction = wi - dwodx +
+//                2. * (Vec3::dot(wo, normal) * dndx + dDNdx * normal);
+//            new_ray.ry_direction = wi - dwody +
+//                2. * (Vec3::dot(wo, normal) * dndy + dDNdy * normal);
+//        },
+//        _ => { panic!("Unsupported illumination model") }
+//    };
+//
+//    new_ray
+//}
 
 
 pub fn render(x:f64, y:f64, pixel_delta_x : f64, pixel_delta_y : f64, scene : &Scene) -> Vec3 {
-    let mut cam_ray = scene.camera.ray(x,y, pixel_delta_x, pixel_delta_y);
+    let cam_ray = scene.camera.ray(x,y, pixel_delta_x, pixel_delta_y);
 
-    let closest_object = scene.trace_closest(&mut cam_ray);
-    closest_object.map_or(scene.background, |surface| {
-        shade(&surface, &mut cam_ray, scene, 0)
-    })
+    let mut trace_ray = cam_ray;
+    let mut color_result = Vec3::zero();
+    let mut bounces = 0;
+
+    let mut accumulated_pdf = Vec3::one();
+
+    while bounces <= CONFIG.bounces {
+        bounces += 1;
+
+        let surface = if let Some(surf) = scene.trace_closest(&mut trace_ray) {
+            surf
+        } else {
+            //Add background light and return
+            color_result += accumulated_pdf * scene.background;
+            return color_result;
+        };
+
+        let material = surface.material.unwrap();
+
+        //Add emitted light
+        color_result += accumulated_pdf * material.get_emission();
+
+        //Sample brdf and update accumulated color
+        let (color, new_direction, pdf) = material.sample_brdf(trace_ray, surface.normal); 
+        accumulated_pdf *= color * new_direction.dot(surface.normal).abs() / pdf;
+
+        //Spawn new ray
+        trace_ray = Ray::new(surface.position, new_direction);
+    }
+
+    color_result
 }
 
 
@@ -343,9 +373,9 @@ fn main() {
     let pixel_size_y = 1./(h as f64);
     let samples_per_pixel = CONFIG.samples_pr_pixel; //This is really n^2!!
 
-    //let scene = Scene::cornell_box();
+    let scene = Scene::cornell_box();
     //let scene = Scene::glossy_planes();
-    let scene = Scene::quad();
+    //let scene = Scene::quad();
 
     //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
     let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)

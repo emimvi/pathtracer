@@ -25,19 +25,10 @@ pub struct PointLight {
 }
 
 //All lights are assumed white.
-#[derive(Clone)]
 pub struct AreaLight {
-    pub mesh : TriangleMesh
+    pub mesh : TriMesh
 }
 
-impl AreaLight {
-
-    pub fn new(mesh : &TriangleMesh) -> AreaLight {
-        AreaLight {
-            mesh : mesh.clone()
-        }
-    }
-}
 
 impl Light for AreaLight {
     fn sample(&self, _surface : &Surface, _scene : &Scene) -> LightSample {

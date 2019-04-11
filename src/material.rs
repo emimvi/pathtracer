@@ -1,25 +1,66 @@
 use vec3::Vec3;
 use mipmap::MipMap;
 use geometry::Surface;
+use geometry::Ray;
+use std::fmt::Debug;
 use microfacet::*;
 use f64;
 
+fn sample_cosine_weighted_hemisphere(normal : &Vec3) -> Vec3
+{
+    let rnd = ::rand::random::<f64>();
+    let cos_theta = f64::sqrt(rnd);
+    let sin_theta = f64::sqrt(1.0 - rnd);
+    let phi = 2.0*f64::consts::PI*::rand::random::<f64>();
+
+    // Calculate new direction as if the z-axis were the normal
+    let spherical_direction = Vec3::new(sin_theta*f64::cos(phi), sin_theta*f64::sin(phi), cos_theta);
+
+    spherical_direction.rotate_to(normal)
+}
 
 pub struct Glass {
     refractive_index : f64,
 }
 
+type BrdfSample = (Vec3, Vec3, f64);
+
+#[derive(Debug)]
 pub struct Lambertian {
-    color : Vec3
+    pub color : Vec3,
+    pub emission : Vec3,
 }
+
 impl _Material for Lambertian {
     fn brdf(&self, _ : Vec3, _ : Vec3, _ : Vec3) -> Vec3 {
         self.color * f64::consts::FRAC_1_PI
     }
+
+    fn sample_brdf(&self, ray : Ray, normal : Vec3) -> BrdfSample {
+        let sampled_direction = sample_cosine_weighted_hemisphere(&normal);
+        let mut brdf_sample : BrdfSample;
+        let color = self.brdf(ray.direction, sampled_direction, normal);
+        let pdf = self.pdf(sampled_direction, normal);
+        (color, sampled_direction, pdf)
+    }
+
+    fn pdf(&self, direction : Vec3, normal : Vec3) -> f64 {
+        let angle = normal.dot(direction);
+        angle*f64::consts::FRAC_1_PI
+    }
+
+    fn get_emission(&self) -> Vec3 {
+        self.emission
+    }
 }
 
-pub trait _Material {
+
+pub trait _Material : Sync + Send + Debug  {
     fn brdf(&self, wo : Vec3, wi : Vec3, normal : Vec3) -> Vec3;
+    fn sample_brdf(&self, ray : Ray, normal : Vec3) -> BrdfSample;
+    fn pdf(&self, direction : Vec3, normal : Vec3) -> f64;
+
+    fn get_emission(&self) -> Vec3;
 }
 
 

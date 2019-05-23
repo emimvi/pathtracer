@@ -301,7 +301,7 @@ pub fn render(x:f64, y:f64, pixel_delta_x : f64, pixel_delta_y : f64, scene : &S
 
         //Sample brdf and update accumulated color
         let (color, new_direction, pdf) = material.sample_brdf(trace_ray, surface.normal); 
-        accumulated_pdf *= color * new_direction.dot(surface.normal).abs() / pdf;
+        accumulated_pdf *= color * f64::abs(new_direction.dot(surface.normal)) / pdf;
 
         //Spawn new ray
         trace_ray = Ray::new(surface.position, new_direction);
@@ -337,7 +337,7 @@ lazy_static! {
 
         let dim = value_t!(matches, "dim", usize).unwrap_or(512);
         let samples_pr_pixel = value_t!(matches, "samples", usize).unwrap_or(1);
-        let bounces = value_t!(matches, "b", usize).unwrap_or(10);
+        let bounces = value_t!(matches, "b", usize).unwrap_or(30);
         let diff_size = value_t!(matches, "diff", f64).unwrap_or(0.0);
         let diff_string = diff_size.to_string().replace(".", "");
         let use_diffs = !matches.is_present("no-diffs");
@@ -390,7 +390,7 @@ fn main() {
         let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
 
         let pixel_result = jitters.iter().fold(Vec3::zero(), 
-                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, 2.*pixel_size_x as f64, 2.*pixel_size_y as f64,  &scene));
+                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, 2.*pixel_size_x, 2.*pixel_size_y,  &scene));
 
         pixel_result/jitters.len() as f64
     }).collect();

@@ -12,7 +12,7 @@ use bvh::{BVH, Geometry};
 
 pub struct Scene {
     objects : BVH<Geometry>,
-    pub lights : Vec<Box<Light>>,
+    pub lights : Vec<Box<dyn Light>>,
     pub background : Vec3,
     pub camera : Camera 
 }
@@ -173,7 +173,7 @@ impl Scene {
 
         //let background = Vec3::new(0.3, 0.3, 0.7);
         let background = Vec3::zero();
-        let lights : Box<Light> = Box::new(PointLight { position : Vec3::new(255., 300., 55.), intensity : 250000. });
+        let lights : Box<dyn Light> = Box::new(PointLight { position : Vec3::new(255., 300., 55.), intensity : 250000. });
         //let lights : Box<Light> = Box::new(DirectionalLight { direction : Vec3::new(0., 0., 1.), radiance : 3. });
 
         let eye = Vec3::new(275.,275.,-600.);

@@ -56,19 +56,19 @@ impl<'a> RayT for &'a mut Ray {
     fn t_min(&self) -> f32 { self.t_min as f32 }
 }
 
-pub trait Shape : Intersectable + Boundable {}
-impl<T> Shape for T where T: Intersectable + Boundable {}
+pub trait Shape : Intersectable + Boundable + 'static {}
+impl<T> Shape for T where T: Intersectable + Boundable + 'static {}
 
 pub struct Geometry {
     pub shape : Box<dyn Shape>,
-    pub material : Arc<dyn _Material>
+    pub material : Box<dyn _Material>
 }
 
 impl Geometry {
-    pub fn new(obj : impl Shape + 'static, material : impl _Material + 'static) -> Geometry {
+    pub fn new(obj : impl Shape, material : Box<dyn _Material>) -> Geometry {
         Geometry {
             shape: Box::new(obj),
-            material : Arc::new(material)
+            material : material
         }
     }
 }
@@ -77,7 +77,7 @@ impl Intersectable for Geometry {
     #[inline]
     fn intersect(&self, ray : &mut Ray) -> Option<Surface> {
         if let Some(mut surface) = self.shape.intersect(ray) {
-            surface.material = Some(self.material.clone());
+            surface.material = Some(&*self.material);
             return Some(surface)
         } 
         None

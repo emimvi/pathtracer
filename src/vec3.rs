@@ -54,7 +54,7 @@ impl Vec3 {
         self / self.length()
     }
 
-    pub fn map(self, f : &Fn(f64) -> f64) -> Self {
+    pub fn map<F>(self, f : F) -> Self where F: Fn(f64) -> f64{
         Vec3::new(f(self.x),f(self.y),f(self.z))
     }
 

@@ -336,7 +336,7 @@ lazy_static! {
                              ").get_matches();
 
         let dim = value_t!(matches, "dim", usize).unwrap_or(512);
-        let samples_pr_pixel = value_t!(matches, "samples", usize).unwrap_or(1);
+        let samples_pr_pixel = value_t!(matches, "samples", usize).unwrap_or(8);
         let bounces = value_t!(matches, "b", usize).unwrap_or(30);
         let diff_size = value_t!(matches, "diff", f64).unwrap_or(0.0);
         let diff_string = diff_size.to_string().replace(".", "");

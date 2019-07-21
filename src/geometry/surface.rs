@@ -1,13 +1,14 @@
 use std::sync::Arc;
+use std::rc::Rc;
 use geometry::{Material, Ray};
 use material::*;
 use vec3::*;
 
 #[derive(Debug, Clone)]
-pub struct Surface { 
+pub struct Surface<'a> { 
     pub position : Vec3,
     pub normal: Vec3,
-    pub material :  Option<Arc<dyn _Material>>,
+    pub material :  Option<&'a dyn _Material>,
     pub uv : Vec2,
     pub dpdu : Vec3, pub dpdv : Vec3, // world space / texture space
     pub dndu : Vec3, pub dndv : Vec3, // normal derivative / texture space
@@ -16,13 +17,13 @@ pub struct Surface {
     pub dudy : f64 , pub dvdy : f64,  // texture space / screen space y
 }
 
-impl Default for Surface {
-    fn default() -> Surface {
+impl Default for Surface<'static> {
+    fn default() -> Surface<'static> {
         Surface { 
             position : Vec3::zero(), 
             normal : Vec3::new(0.,1.,0.), 
-            material : None,
             uv : Vec2::from([0., 0.]),
+            material: None,
             dpdu : Vec3::zero(), //How much does the world position change pr. uv-coodinate
             dpdv : Vec3::zero(),
             dpdx : Vec3::zero(), //How much does the world position AT AN INTERSECTION change wrt. a given camera ray.
@@ -37,8 +38,8 @@ impl Default for Surface {
     }
 }
 
-impl Surface {
-    pub fn new(position : Vec3, normal : Vec3) -> Surface {
+impl Surface<'_> {
+    pub fn new(position : Vec3, normal : Vec3) -> Surface<'static> {
         Surface { position, 
                   normal, 
                   ..Surface::default()

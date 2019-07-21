@@ -8,6 +8,6 @@ rand = "0.4"
 rayon = "1.0.1"
 tobj = "0.1.6"
 image = "*"
-bvh = { path = "/Users/Imbert/Documents/Playground/rust/bvh" }
+bvh = { git = "https://github.com/emimvi/tracer_bvh" }
 clap = "~2.32"
 lazy_static = "1.2.0"

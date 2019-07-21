@@ -1,3 +1,4 @@
+use material::*;
 use vec3::*;
 use std::mem;
 use rand;
@@ -12,6 +13,25 @@ where T : MicrofacetDistribution
     distribution : T,
     fresnel : FresnelConductor,
     reflectance_color : Vec3
+}
+
+impl _Material for Glossy {
+    fn brdf(&self, wo : Vec3, wi : Vec3, normal : Vec3) -> Vec3 {
+        self.f(wo, wi, normal)
+    }
+
+    fn sample_brdf(&self, ray : Ray, normal : Vec3) -> BrdfSample {
+        self.shade(&ray, normal)
+    }
+
+    fn pdf(&self, out_direction : Vec3, in_direction : Vec3, normal : Vec3) -> f64 { 
+        let half_vector = (out_direction + in_direction).normalize();
+        self.distribution.pdf(half_vector, normal)
+    }
+
+    fn get_emission(&self) -> Vec3 {
+        Vec3::zero()
+    }
 }
 
 impl Glossy {
@@ -29,8 +49,7 @@ impl Glossy {
 
     ///Sample the material, given a view direction. Returns a color, sampled direction and
     ///probability/pdf of the sampled direction.
-    pub fn shade(&self, ray : &Ray, surface : &Surface) -> (Vec3, Vec3, f64) {
-        let normal = surface.normal;
+    pub fn shade(&self, ray : &Ray, normal : Vec3) -> (Vec3, Vec3, f64) {
         let wo = -ray.direction;
 
         let half_vector = self.distribution.sample_microfacet_normal(wo, normal);
@@ -260,9 +279,9 @@ impl FresnelConductor {
         let etak2 = etak * etak;
 
         let t0 = eta2 - etak2 - sinThetaI2;
-        let a2plusb2 = (t0 * t0 + 4. * eta2 * etak2).map(&f64::sqrt);
+        let a2plusb2 = (t0 * t0 + 4. * eta2 * etak2).map(f64::sqrt);
         let t1 = a2plusb2 + Vec3::one()*cosThetaI2;
-        let a = (0.5 * (a2plusb2 + t0)).map(&f64::sqrt);
+        let a = (0.5 * (a2plusb2 + t0)).map(f64::sqrt);
         let t2 = 2. * cos_theta_i * a;
         let Rs = (t1 - t2) / (t1 + t2);
 

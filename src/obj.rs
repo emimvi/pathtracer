@@ -147,12 +147,12 @@ impl Intersectable for Triangle {
 
 }
 
-pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<Light>>) {
+pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<dyn Light>>) {
     let obj = tobj::load_obj(obj_name);
     let (models, materials) = obj.expect(&format!("Failed to load {}: ", obj_name.display()));
 
     let mut meshes : Vec<Geometry> = Vec::new();
-    let mut lights : Vec<Box<Light>> = Vec::new();
+    let mut lights : Vec<Box<dyn Light>> = Vec::new();
     models.iter().for_each(|model| {
 
         //Vertices: Collect flattened vertices into Vec3's
@@ -189,15 +189,19 @@ pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<Light>>) {
         //    Material::default()
         //};
         //
-        let default = Lambertian { color : Vec3::zero(),
+        let default = Box::new(Lambertian { color : Vec3::zero(),
                                    emission : Vec3::zero()
-                                 };
-        let material = if let Some(id) = model.mesh.material_id {
+                                 });
+        let material : Box<dyn _Material> = if let Some(id) = model.mesh.material_id {
             if let Some(illum) = &materials[id].illumination_model {
                 let tobj_material = &materials[id];
-                Lambertian {
-                    color: Vec3::from(tobj_material.diffuse),
-                    emission: Vec3::from(tobj_material.ambient),
+                if (tobj_material.ambient[0] == 0.) {
+                    Box::new(Glossy::new(0.5, 0.5, Vec3::from(tobj_material.diffuse)))
+                } else {
+                    Box::new(Lambertian {
+                        color: Vec3::from(tobj_material.diffuse),
+                        emission: Vec3::from(tobj_material.ambient),
+                    })
                 }
             } else {
                 default

@@ -23,7 +23,7 @@ pub struct Glass {
     refractive_index : f64,
 }
 
-type BrdfSample = (Vec3, Vec3, f64);
+pub type BrdfSample = (Vec3, Vec3, f64);
 
 #[derive(Debug)]
 pub struct Lambertian {
@@ -40,12 +40,12 @@ impl _Material for Lambertian {
         let sampled_direction = sample_cosine_weighted_hemisphere(&normal);
         let mut brdf_sample : BrdfSample;
         let color = self.brdf(ray.direction, sampled_direction, normal);
-        let pdf = self.pdf(sampled_direction, normal);
+        let pdf = self.pdf(sampled_direction, ray.direction, normal);
         (color, sampled_direction, pdf)
     }
 
-    fn pdf(&self, direction : Vec3, normal : Vec3) -> f64 {
-        let angle = normal.dot(direction);
+    fn pdf(&self, out_direction : Vec3, _ : Vec3, normal : Vec3) -> f64 {
+        let angle = normal.dot(out_direction);
         angle*f64::consts::FRAC_1_PI
     }
 
@@ -55,10 +55,10 @@ impl _Material for Lambertian {
 }
 
 
-pub trait _Material : Sync + Send + Debug  {
+pub trait _Material : Sync + Debug + 'static  {
     fn brdf(&self, wo : Vec3, wi : Vec3, normal : Vec3) -> Vec3;
     fn sample_brdf(&self, ray : Ray, normal : Vec3) -> BrdfSample;
-    fn pdf(&self, direction : Vec3, normal : Vec3) -> f64;
+    fn pdf(&self, in_direction : Vec3, out_direction : Vec3, normal : Vec3) -> f64;
 
     fn get_emission(&self) -> Vec3;
 }

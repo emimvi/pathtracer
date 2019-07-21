@@ -1,179 +1,204 @@
-extern crate glfw;
 extern crate gl;
+extern crate glutin;
+mod glprogram;
 
-use glfw::{Action, Context, Key};
-
-// include the OpenGL type aliases
 use gl::types::*;
-
 use std::ffi::CString;
+use std::ffi::CStr;
 use std::mem;
 use std::ptr;
-use std::str;
+use glprogram::*;
 
-// Vertex data
-static VERTEX_DATA: [GLfloat; 6] = [0.0, 0.5, 0.5, -0.5, -0.5, -0.5];
+struct GLTexture {
+    pub handle : GLuint, 
+    width : usize,
+    height : usize,
+}
+impl GLTexture {
+    fn new() -> GLTexture {
+        let mut handle = 0;
+        let width = 2;
+        let height = 2;
 
-// Shader sources
-static VS_SRC: &'static str = "
-#version 450
-in vec2 position;
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}";
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0);
+            gl::GenTextures(1, &mut handle);
+            gl::BindTexture(gl::TEXTURE_2D, handle);
+            let t = _TEXTURE_TEST.as_ptr();
+            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, width as GLsizei, height as GLsizei, 0, gl::RGBA, gl::UNSIGNED_BYTE, t as *const _);
 
-static FS_SRC: &'static str = "
-#version 450
-out vec4 out_color;
-void main() {
-    out_color = vec4(1.0, 1.0, 1.0, 1.0);
-}";
+            //gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+            //gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+        }
 
-fn compile_shader(src: &str, ty: GLenum) -> GLuint {
-    let shader;
-    unsafe {
-        shader = gl::CreateShader(ty);
-        // Attempt to compile the shader
-        let c_str = CString::new(src.as_bytes()).unwrap();
-        gl::ShaderSource(shader, 1, &c_str.as_ptr(), ptr::null());
-        gl::CompileShader(shader);
-
-        // Get the compile status
-        let mut status = gl::FALSE as GLint;
-        gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut status);
-
-        // Fail on error
-        if status != (gl::TRUE as GLint) {
-            let mut len = 0;
-            gl::GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut len);
-            let mut buf = Vec::with_capacity(len as usize);
-            buf.set_len((len as usize) - 1); // subtract 1 to skip the trailing null character
-            gl::GetShaderInfoLog(
-                shader,
-                len,
-                ptr::null_mut(),
-                buf.as_mut_ptr() as *mut GLchar,
-            );
-            panic!(
-                "{}",
-                str::from_utf8(&buf)
-                    .ok()
-                    .expect("ShaderInfoLog not valid utf8")
-            );
+        GLTexture {
+            handle,
+            width,
+            height
         }
     }
-    shader
 }
 
-fn link_program(vs: GLuint, fs: GLuint) -> GLuint {
-    unsafe {
-        let program = gl::CreateProgram();
-        gl::AttachShader(program, vs);
-        gl::AttachShader(program, fs);
-        gl::LinkProgram(program);
-        // Get the link status
-        let mut status = gl::FALSE as GLint;
-        gl::GetProgramiv(program, gl::LINK_STATUS, &mut status);
+// Vertex data
+static _TEXTURE_TEST : [GLuint; 4] = [0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFFFF];
+static VERTEX_DATA: [GLfloat; 16] = [
+ -0.5, -0.5,     0.0, 0.0,  
+  0.5, -0.5,     1.0, 0.0,  
+  0.5,  0.5,     1.0, 1.0,   
+ -0.5,  0.5,     0.0, 1.0
+ ];
+static VERTEX_INDICIES: [GLuint; 6] = [0, 1, 2, 0, 2, 3];
 
-        // Fail on error
-        if status != (gl::TRUE as GLint) {
-            let mut len: GLint = 0;
-            gl::GetProgramiv(program, gl::INFO_LOG_LENGTH, &mut len);
-            let mut buf = Vec::with_capacity(len as usize);
-            buf.set_len((len as usize) - 1); // subtract 1 to skip the trailing null character
-            gl::GetProgramInfoLog(
-                program,
-                len,
-                ptr::null_mut(),
-                buf.as_mut_ptr() as *mut GLchar,
-            );
-            panic!(
-                "{}",
-                str::from_utf8(&buf)
-                    .ok()
-                    .expect("ProgramInfoLog not valid utf8")
-            );
+struct GLMesh {
+    vao : GLuint,
+    vbo : GLuint,
+    ebo : GLuint,
+    num_triangles : usize
+}
+
+impl GLMesh {
+    fn draw(&self) {
+        unsafe {
+            gl::BindVertexArray(self.vao);
+            gl::DrawElements(gl::TRIANGLES, (self.num_triangles*3) as i32, gl::UNSIGNED_INT, ptr::null());
+            gl::BindVertexArray(0);
         }
-        program
+    }
+
+    fn new(vertices : &[GLfloat], indicies : &[GLuint]) -> GLMesh {
+        let mut vao = 0;
+        let mut vbo = 0;
+        let mut ebo = 0;
+        debug_assert_eq!(indicies.len() % 3, 0);
+        unsafe {
+            // Create Vertex Array Object
+            gl::GenVertexArrays(1, &mut vao);
+            gl::BindVertexArray(vao);
+
+            // Create a Vertex Buffer Object and copy the vertex data to it
+            gl::GenBuffers(1, &mut vbo);
+            gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (vertices.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+                mem::transmute(&vertices[0]),
+                gl::STATIC_DRAW,
+            );
+
+            gl::GenBuffers(1, &mut ebo);
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+            gl::BufferData(
+                gl::ELEMENT_ARRAY_BUFFER,
+                (indicies.len() * mem::size_of::<GLuint>()) as GLsizeiptr,
+                mem::transmute(&indicies[0]),
+                gl::STATIC_DRAW,
+            );
+
+
+            gl::EnableVertexAttribArray(0);
+            gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE as GLboolean, (mem::size_of::<GLfloat>()*4) as i32, ptr::null());
+            gl::EnableVertexAttribArray(1);
+            gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE as GLboolean, (mem::size_of::<GLfloat>()*4) as i32, (mem::size_of::<GLfloat>()*2) as *const _);
+            gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+            gl::BindVertexArray(0);
+        }
+
+        GLMesh {
+            vao,
+            vbo,
+            ebo,
+            num_triangles : indicies.len()/3
+        }
+    }
+}
+
+impl Drop for GLMesh {
+    fn drop(&mut self) {
+        //Cleanup
+        unsafe {
+                gl::DeleteBuffers(2, [self.vbo, self.ebo].as_ptr());
+                gl::DeleteVertexArrays(1, &self.vao);
+        }
     }
 }
 
 fn main() {
-    let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
+    let mut events_loop = glutin::EventsLoop::new();
+    let window = glutin::WindowBuilder::new().with_dimensions(glutin::dpi::LogicalSize::new(512.0, 512.0));
+    let context = glutin::ContextBuilder::new().build_windowed(window, &events_loop).unwrap();
 
-    let (mut window, events) = glfw.create_window(512, 512, "GLFW-rs window using gl-rs", glfw::WindowMode::Windowed)
-        .expect("Failed to create GLFW window.");
+    // It is essential to make the context current before calling `gl::load_with`.
+    let gl_window = unsafe { context.make_current() }.unwrap();
 
-    window.set_key_polling(true);
-    window.make_current();
+    // Load the OpenGL function pointers
+    // TODO: `as *const _` will not be needed once glutin is updated to the latest gl version
+    gl::load_with(|symbol| gl_window.get_proc_address(symbol) as *const _);
 
-    gl::load_with(|s| window.get_proc_address(s) as *const _);
+    let program = GLProgram::new("src/vert.vert", "src/frag.frag");
 
-    // Create GLSL shaders
-    let vs = compile_shader(VS_SRC, gl::VERTEX_SHADER);
-    let fs = compile_shader(FS_SRC, gl::FRAGMENT_SHADER);
-    let program = link_program(vs, fs);
+    print_gl_info();
 
-    let mut vao = 0;
-    let mut vbo = 0;
-
+    let mesh;
+    let tex : GLTexture;
     unsafe {
-        // Create Vertex Array Object
-        gl::GenVertexArrays(1, &mut vao);
-        gl::BindVertexArray(vao);
-
-        // Create a Vertex Buffer Object and copy the vertex data to it
-        gl::GenBuffers(1, &mut vbo);
-        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-        gl::BufferData(
-            gl::ARRAY_BUFFER,
-            (VERTEX_DATA.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-            mem::transmute(&VERTEX_DATA[0]),
-            gl::STATIC_DRAW,
-        );
-
+        gl::DebugMessageCallback(debug_output_gl, ptr::null());
+        gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+        
+        gl::UseProgram(*program);
+        mesh = GLMesh::new(&VERTEX_DATA, &VERTEX_INDICIES);
         // Use shader program
-        gl::UseProgram(program);
-        gl::BindFragDataLocation(program, 0, CString::new("out_color").unwrap().as_ptr());
+        gl::BindFragDataLocation(*program, 0, CString::new("out_color").unwrap().as_ptr());
 
         // Specify the layout of the vertex data
-        let pos_attr = gl::GetAttribLocation(program, CString::new("position").unwrap().as_ptr());
-        gl::EnableVertexAttribArray(pos_attr as GLuint);
-        gl::VertexAttribPointer(
-            pos_attr as GLuint,
-            2,
-            gl::FLOAT,
-            gl::FALSE as GLboolean,
-            0,
-            ptr::null(),
-        );
-    }
+        //let pos_attr = gl::GetAttribLocation(*program, CString::new("position").unwrap().as_ptr());
 
-    while !window.should_close() {
-        //Handle input
-        glfw.poll_events();
-        for (_, event) in glfw::flush_messages(&events) {
-            handle_window_event(&mut window, event);
+        tex = GLTexture::new();
+        //let tex_loc = gl::GetUniformLocation(*program, CString::new("te").unwrap().as_ptr());
+        //gl::Uniform1i(tex_loc, tex.handle as GLint);
+        //println!("{}", tex_loc);
+    }
+    events_loop.run_forever(|event| {
+        use glutin::{ControlFlow, Event, WindowEvent};
+
+        if let Event::WindowEvent { event, .. } = event {
+            if let WindowEvent::CloseRequested = event {
+                return ControlFlow::Break;
+            }
         }
 
-        //Draw screen
         unsafe {
             // Clear the screen to black
             gl::ClearColor(0.3, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
-            // Draw a triangle from the 3 vertices
-            gl::DrawArrays(gl::TRIANGLES, 0, 3);
+            //gl::ActiveTexture(gl::TEXTURE0);
+            //gl::BindTexture(gl::TEXTURE_2D, tex.handle);
+            mesh.draw();
         }
 
-    }
+        gl_window.swap_buffers().unwrap();
+
+        ControlFlow::Continue
+    });
+
 }
 
-fn handle_window_event(window: &mut glfw::Window, event: glfw::WindowEvent) {
-    match event {
-        glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-            window.set_should_close(true)
-        }
-        _ => {}
+extern "system" fn debug_output_gl(_source: GLenum, _type: GLenum, _id: GLuint, _severity: GLenum, _length: GLsizei, message: *const GLchar, _user_param: *mut GLvoid) {
+    println!("GL error: {:?}", unsafe { CString::from_raw(message as *mut _) });
+}
+
+fn print_gl_info() {
+    unsafe {
+    let what = CStr::from_ptr(gl::GetString(gl::VENDOR) as *const i8);
+    let what1 = CStr::from_ptr(gl::GetString(gl::RENDERER) as *const i8);
+    let what2 = CStr::from_ptr(gl::GetString(gl::VERSION) as *const i8);
+    let what3 = CStr::from_ptr(gl::GetString(gl::SHADING_LANGUAGE_VERSION) as *const i8);
+
+    println!("{:?}", what);
+    println!("{:?}", what1);
+    println!("{:?}", what2);
+    println!("{:?}", what3);
     }
 }

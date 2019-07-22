@@ -19,15 +19,20 @@ pub struct Image {
 }
 
 impl Image {
+
+    pub fn to_8bit_color(x : f64) -> u8 {
+        (clamp(x)*255f64 + 0.5) as u8
+    }
+
+ 
     pub fn save_ppm(&self, filename : &str) -> Result<()> {
-        let to_ppm = |x:f64| (clamp(x)*255f64 + 0.5) as u8;
 
         let file = File::create(filename).expect(&format!("Unable to create file: {}", filename));
         let mut file = BufWriter::new(file);
 
         write!(file, "P3\n{} {}\n255\n", self.width, self.height)?;
         for pixel in self.data.iter() {
-            write!(file, "{} {} {}\n", to_ppm(pixel.x) as u8, to_ppm(pixel.y) as u8, to_ppm(pixel.z) as u8)?;
+            write!(file, "{} {} {}\n", Self::to_8bit_color(pixel.x), Self::to_8bit_color(pixel.y), Self::to_8bit_color(pixel.z))?;
         }
         write!(file, "")?;
         Ok(())

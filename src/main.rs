@@ -5,6 +5,7 @@ extern crate rand;
 extern crate rayon;
 extern crate tobj;
 extern crate image;
+extern crate minifb;
 extern crate bvh as extern_bvh;
 #[macro_use]
 extern crate clap;
@@ -28,6 +29,7 @@ use std::f64;
 use rayon::prelude::*;
 use mipmap::Image;
 use clap::App;
+use minifb::{Key, WindowOptions, Window}; 
 
 fn sample_cosine_weighted_hemisphere(normal : &Vec3) -> Vec3
 {
@@ -371,40 +373,64 @@ fn main() {
     let w = CONFIG.dim;
     let pixel_size_x = 1./(w as f64);
     let pixel_size_y = 1./(h as f64);
-    let samples_per_pixel = CONFIG.samples_pr_pixel; //This is really n^2!!
+    let samples_per_pixel = 1; //CONFIG.samples_pr_pixel; //This is really n^2!!
 
     let scene = Scene::cornell_box();
     //let scene = Scene::glossy_planes();
     //let scene = Scene::quad();
 
-    //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
-    let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
-            .iter().map(|&(dx,dy)| (dx*pixel_size_x, dy*pixel_size_y)).collect();
-
-    let pixels : Vec<Vec3> = (0..h*w).into_par_iter().map(|i| { 
-        let x = i % w; // x = 0..width
-        let y = i / h; // y = 0..height
-        let pixel_ndc_x = ( (x as f64) + 0.5 ) / w as f64; //0..1, starting at top left.
-        let pixel_ndc_y = ( (y as f64) + 0.5 ) / h as f64; //0..1, starting at top left.
-        let pixel_ss_x = 2. * pixel_ndc_x - 1.; //  -1..1, starting at bottom left.
-        let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
-
-        let pixel_result = jitters.iter().fold(Vec3::zero(), 
-                           |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, 2.*pixel_size_x, 2.*pixel_size_y,  &scene));
-
-        pixel_result/jitters.len() as f64
-    }).collect();
-
-    let image = Image {
-        height : h,
-        width: w,
-        data : pixels
-    };
+    let mut window = Window::new("Test - ESC to exit", w, h, WindowOptions::default()).unwrap_or_else(|e| { panic!("{}", e); });
     
-    if let Err(e) = image.save_ppm(&CONFIG.output) {
-        println!("{}", e);
-    };
+    let mut pixels : Vec<Vec3> = vec![Vec3::zero(); h*w];
+    let mut iteration = 1;
+    while window.is_open() && !window.is_key_down(Key::Escape) {
 
+        //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
+        let jitters : Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
+                .iter().map(|&(dx,dy)| (dx*pixel_size_x, dy*pixel_size_y)).collect();
+
+        let next : Vec<Vec3> = (0..h*w).into_par_iter().map(|i| { 
+            let x = i % w; // x = 0..width
+            let y = i / h; // y = 0..height
+            let pixel_ndc_x = ( (x as f64) + 0.5 ) / w as f64; //0..1, starting at top left.
+            let pixel_ndc_y = ( (y as f64) + 0.5 ) / h as f64; //0..1, starting at top left.
+            let pixel_ss_x = 2. * pixel_ndc_x - 1.; //  -1..1, starting at bottom left.
+            let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
+
+            let pixel_result = jitters.iter().fold(Vec3::zero(), 
+                            |sum, &(dx,dy)| sum + render(pixel_ss_x + dx, pixel_ss_y + dy, 2.*pixel_size_x, 2.*pixel_size_y,  &scene));
+
+            pixel_result/jitters.len() as f64
+        }).collect();
+
+        for i in 0..pixels.len() {
+            pixels[i] += next[i];
+        }
+        // let image = Image {
+        //     height : h,
+        //     width: w,
+        //     data : pixels
+        // };
+        
+        // if let Err(e) = image.save_ppm(&CONFIG.output) {
+        //     println!("{}", e);
+        // };
+
+        // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+        window.update_with_buffer(&get_raw_pixels_u32(&pixels, iteration)).unwrap();
+        iteration += 1;
+    }
+
+}
+
+pub fn get_raw_pixels_u32(pixels : &Vec<Vec3>, iteration : u32) -> Vec<u32> {
+    let denom = 1. / (iteration as f64);
+    pixels.iter().map(|vec3| {
+        let r = Image::to_8bit_color(vec3.x * denom) as u32;
+        let g = Image::to_8bit_color(vec3.y * denom) as u32;
+        let b = Image::to_8bit_color(vec3.z * denom) as u32;
+        (r << 16 | g << 8 | b)
+    }).collect()
 }
 
 fn generate_jitter(num_samples : usize) -> Vec<(f64, f64)> {

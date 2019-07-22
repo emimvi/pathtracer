@@ -195,9 +195,10 @@ pub fn load_obj(obj_name : &Path) -> (Vec<Geometry>, Vec<Box<dyn Light>>) {
         let material : Box<dyn _Material> = if let Some(id) = model.mesh.material_id {
             if let Some(illum) = &materials[id].illumination_model {
                 let tobj_material = &materials[id];
-                if (tobj_material.ambient[0] == 0.) {
-                    Box::new(Glossy::new(0.5, 0.5, Vec3::from(tobj_material.diffuse)))
-                } else {
+                // if (tobj_material.ambient[0] == 0.) {
+                //     Box::new(Glossy::new(0.5, 0.5, Vec3::from(tobj_material.diffuse)))
+                // } else 
+                {
                     Box::new(Lambertian {
                         color: Vec3::from(tobj_material.diffuse),
                         emission: Vec3::from(tobj_material.ambient),

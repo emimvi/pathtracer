@@ -11,3 +11,4 @@ image = "*"
 bvh = { git = "https://github.com/emimvi/tracer_bvh" }
 clap = "~2.32"
 lazy_static = "1.2.0"
+minifb = "0.12"

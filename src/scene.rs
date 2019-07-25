@@ -1,4 +1,4 @@
-use vec3::*;
+use algebra::vec3::*;
 use geometry::*;
 use lights::*;
 use mipmap::*;
@@ -8,49 +8,49 @@ use std::sync::Arc;
 
 use material::*;
 
-use bvh::{BVH, Geometry};
+use bvh::{Geometry, BVH};
 
 pub struct Scene {
-    objects : BVH<Geometry>,
-    pub lights : Vec<Box<dyn Light>>,
-    pub background : Vec3,
-    pub camera : Camera 
+    objects: BVH<Geometry>,
+    pub lights: Vec<Box<dyn Light>>,
+    pub background: Vec3,
+    pub camera: Camera,
 }
 
 pub struct Camera {
-    eye : Vec3,
-    view_direction : Vec3,
-    up_direction : Vec3,
-    camera_const : f64, //FOV
+    eye: Vec3,
+    view_direction: Vec3,
+    up_direction: Vec3,
+    camera_const: f64, //FOV
 }
 
 impl Camera {
-    pub fn new(eye : Vec3, view_direction : Vec3, up_direction : Vec3, camera_const : f64) -> Camera {
+    pub fn new(eye: Vec3, view_direction: Vec3, up_direction: Vec3, camera_const: f64) -> Camera {
         Camera {
             eye,
             view_direction,
             up_direction,
-            camera_const
+            camera_const,
         }
     }
 
-    pub fn ray(&self, x : f64, y: f64, pixel_delta_x : f64, pixel_delta_y: f64) -> Ray {
-
+    pub fn ray(&self, x: f64, y: f64, pixel_delta_x: f64, pixel_delta_y: f64) -> Ray {
         let ip_axes0 = -(self.view_direction.cross(self.up_direction)).normalize();
         let ip_axes1 = -(ip_axes0.cross(self.view_direction)).normalize();
 
-
         //normalize(ip_normal + ip_axes[0]*coords[0] + ip_axes[1]*coords[1]);
         let view_dir = self.view_direction * self.camera_const;
-        let ray_dir = (view_dir + ip_axes0*x + ip_axes1*y).normalize();
+        let ray_dir = (view_dir + ip_axes0 * x + ip_axes1 * y).normalize();
 
         let mut ray = Ray::new(self.eye, ray_dir);
 
         if ::CONFIG.use_diffs {
             ray.rx_origin = self.eye;
             ray.ry_origin = self.eye;
-            ray.rx_direction = (view_dir + ip_axes0*(x+pixel_delta_x) + ip_axes1*y).normalize();
-            ray.ry_direction = (view_dir + ip_axes0*x + ip_axes1*(y+pixel_delta_y)).normalize();
+            ray.rx_direction =
+                (view_dir + ip_axes0 * (x + pixel_delta_x) + ip_axes1 * y).normalize();
+            ray.ry_direction =
+                (view_dir + ip_axes0 * x + ip_axes1 * (y + pixel_delta_y)).normalize();
         }
 
         ray
@@ -58,12 +58,12 @@ impl Camera {
 }
 
 impl Scene {
-    pub fn trace_closest(&self, ray : &mut Ray) -> Option<Surface> {
+    pub fn trace_closest(&self, ray: &mut Ray) -> Option<Surface> {
         self.objects.intersect(ray)
     }
 
     //TODO: Return on first intersection, instead of checking all possible intersections.
-    pub fn trace_any(&self, ray : &mut Ray) -> Option<Surface> {
+    pub fn trace_any(&self, ray: &mut Ray) -> Option<Surface> {
         self.trace_closest(ray)
     }
 
@@ -71,7 +71,7 @@ impl Scene {
     //    let eye = Vec3::new(0.,3.,2.);
     //    let direction = Vec3::new(0., -1., 1.).normalize();
     //    let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 1.);
-    //    
+    //
     //    //let eye = Vec3::new(0.,3.,-7.);
     //    //let direction = Vec3::new(0., -0.2, 1.).normalize();
     //    //let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 4.);
@@ -87,14 +87,14 @@ impl Scene {
     //    //        geometry.material = Arc::clone(&arc);
     //    //    }
     //    //}
-    //    
-    //    let sphere = Sphere { center : Vec3::new(0., 0.5, 3.), 
-    //                          radius : 0.5, 
+    //
+    //    let sphere = Sphere { center : Vec3::new(0., 0.5, 3.),
+    //                          radius : 0.5,
     //                          };
     //    //objects.push(Geometry::new(sphere      , Material::mirror()));
 
     //    let bvh = BVH::new(objects);
-    //    //let bvh = BVH::unanimated(16, objects);        
+    //    //let bvh = BVH::unanimated(16, objects);
     //    //
 
     //    let background = Vec3::zero();
@@ -110,11 +110,11 @@ impl Scene {
 
     //    let (mut objects, _) = obj::load_obj(&Path::new("/Users/Imbert/Documents/DTU/thesis/tracer/models/quad.obj"));
 
-    //    let sphere = Sphere { center : Vec3::new(-0.5, 0.0, 0.), 
-    //                          radius : 0.5, 
+    //    let sphere = Sphere { center : Vec3::new(-0.5, 0.0, 0.),
+    //                          radius : 0.5,
     //                          };
-    //    let sphere_g = Sphere { center : Vec3::new(0.5, 0.0, 0.), 
-    //                          radius : 0.5, 
+    //    let sphere_g = Sphere { center : Vec3::new(0.5, 0.0, 0.),
+    //                          radius : 0.5,
     //                          };
     //    //objects.push(Geometry::new(sphere      , Material::mirror()));
     //    //objects.push(Geometry::new(sphere_g      , Material::glass()));
@@ -127,9 +127,8 @@ impl Scene {
     //        geometry.material = Arc::clone(&arc);
     //    }
 
-
     //    let bvh = BVH::new(objects);
-    //    //let bvh = BVH::unanimated(16, objects);        
+    //    //let bvh = BVH::unanimated(16, objects);
 
     //    let background = Vec3::one()*0.33;
     //    let lights : Vec<Box<Light>> = vec!(Box::new( DirectionalLight { direction : Vec3::new(0., -1., 1.).normalize(), radiance : 3. } ));
@@ -149,37 +148,48 @@ impl Scene {
         //     geometry.material = Arc::clone(&arc);
         // }
 
-        let sphere = Sphere { center : Vec3::new(350., 100., 350.), 
-                              radius : 100., 
-                              };
-        let sphere_diff = Sphere { center : Vec3::new(150., 100., 350.), 
-                              radius : 100., 
-                              };
+        let sphere = Sphere {
+            center: Vec3::new(350., 100., 350.),
+            radius: 100.,
+        };
+        let sphere_diff = Sphere {
+            center: Vec3::new(150., 100., 350.),
+            radius: 100.,
+        };
 
-        let sphere_glass = Sphere { center : Vec3::new(200., 100., 175.), 
-                              radius : 100., 
-                              };
-        let sphere_gloss = Sphere { center : Vec3::new(400., 375., 250.), 
-                              radius : 100., 
-                              };
-
+        let sphere_glass = Sphere {
+            center: Vec3::new(200., 100., 175.),
+            radius: 100.,
+        };
+        let sphere_gloss = Sphere {
+            center: Vec3::new(400., 375., 250.),
+            radius: 100.,
+        };
 
         //objects.push(Geometry::new(sphere      , Material::micro(Vec3::one(), 0.07, 1.5)));
         //objects.push(Geometry::new(sphere      , Material::mirror()));
         //objects.push(Geometry::new(sphere_glass, Material::glass()));
-    
+
         //objects.push(Geometry::new(sphere, Material::diffuse(GREEN)));
         let bvh = BVH::new(objects);
 
         //let background = Vec3::new(0.3, 0.3, 0.7);
         let background = Vec3::zero();
-        let lights : Box<dyn Light> = Box::new(PointLight { position : Vec3::new(255., 300., 55.), intensity : 250000. });
+        let lights: Box<dyn Light> = Box::new(PointLight {
+            position: Vec3::new(255., 300., 55.),
+            intensity: 250_000.,
+        });
         //let lights : Box<Light> = Box::new(DirectionalLight { direction : Vec3::new(0., 0., 1.), radiance : 3. });
 
-        let eye = Vec3::new(275.,275.,-600.);
+        let eye = Vec3::new(275., 275., -600.);
         let direction = Vec3::new(0., 0., 1.).normalize();
         let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 2.);
-        Scene { objects : bvh, lights : vec!(), background, camera }
+        Scene {
+            objects: bvh,
+            lights: vec![],
+            background,
+            camera,
+        }
     }
 
     //pub fn default() -> Scene {
@@ -211,9 +221,8 @@ impl Scene {
     //        Geometry::new(circle, mat_diff)
     //    };
 
-
     //    let objects : Vec<Geometry> = vec!(geo, geo2, geo3);
-    //    let bvh = BVH::new(objects);        
+    //    let bvh = BVH::new(objects);
 
     //    let eye = Vec3::new(0.,0.,0.);
     //    let direction = Vec3::new(0., 0., 1.).normalize();

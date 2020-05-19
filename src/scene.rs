@@ -11,7 +11,7 @@ use material::*;
 use bvh::{Geometry, BVH};
 
 pub struct Scene {
-    objects: BVH<Geometry>,
+    objects: BVH,
     pub lights: Vec<Box<dyn Light>>,
     pub background: Vec3,
     pub camera: Camera,
@@ -57,13 +57,13 @@ impl Camera {
     }
 }
 
-impl Scene {
-    pub fn trace_closest(&self, ray: &mut Ray) -> Option<Surface> {
+impl<'a> Scene {
+    pub fn trace_closest(&'a self, ray: &mut Ray) -> Option<SurfaceHit<'a>> {
         self.objects.intersect(ray)
     }
 
     //TODO: Return on first intersection, instead of checking all possible intersections.
-    pub fn trace_any(&self, ray: &mut Ray) -> Option<Surface> {
+    pub fn trace_any(&self, ray: &mut Ray) -> Option<SurfaceHit> {
         self.trace_closest(ray)
     }
 
@@ -76,7 +76,7 @@ impl Scene {
     //    //let direction = Vec3::new(0., -0.2, 1.).normalize();
     //    //let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 4.);
 
-    //    let (mut objects, _) = obj::load_obj(&Path::new("/Users/Imbert/Documents/DTU/thesis/tracer/models/glossy_planes.obj"));
+    //    let (mut objects, _) = obj::load_obj(&Path::new("./models/glossy_planes.obj"));
 
     //    //let mut material = Material::constant(Vec3::new(0.5, 0.5, 0.5));
     //    //let rainbow = MipMap::rainbow();
@@ -108,7 +108,7 @@ impl Scene {
     //    let direction = Vec3::new(0., 0., 1.).normalize();
     //    let camera = Camera::new(eye, direction, Vec3::new(0., 1., 0.), 1.);
 
-    //    let (mut objects, _) = obj::load_obj(&Path::new("/Users/Imbert/Documents/DTU/thesis/tracer/models/quad.obj"));
+    //    let (mut objects, _) = obj::load_obj(&Path::new("./models/quad.obj"));
 
     //    let sphere = Sphere { center : Vec3::new(-0.5, 0.0, 0.),
     //                          radius : 0.5,
@@ -175,10 +175,10 @@ impl Scene {
 
         //let background = Vec3::new(0.3, 0.3, 0.7);
         let background = Vec3::zero();
-        let lights: Box<dyn Light> = Box::new(PointLight {
-            position: Vec3::new(255., 300., 55.),
-            intensity: 250_000.,
-        });
+        //let lights: Box<dyn Light> = Box::new(PointLight {
+        //    position: Vec3::new(255., 300., 55.),
+        //    intensity: 250_000.,
+        //});
         //let lights : Box<Light> = Box::new(DirectionalLight { direction : Vec3::new(0., 0., 1.), radiance : 3. });
 
         let eye = Vec3::new(275., 275., -600.);

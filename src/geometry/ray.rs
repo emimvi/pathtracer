@@ -1,7 +1,7 @@
 use algebra::vec3::*;
 use std::f64;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct Ray {
     pub origin: Vec3,
     pub direction: Vec3,

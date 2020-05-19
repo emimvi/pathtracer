@@ -3,22 +3,18 @@ use extern_bvh::{ray::RayT, vector::Vector};
 pub use extern_bvh::{BBox, Boundable, BVH as e_BVH};
 
 use algebra::vec3::*;
-use geometry::{Intersectable, Ray, Surface};
+use geometry::{Intersectable, Ray, Surface, SurfaceHit};
 use material::*;
 use std::sync::Arc;
 
-pub struct BVH<T>
-where
-    T: Shape,
+pub struct BVH
 {
-    geometry: e_BVH<T>,
+    geometry: e_BVH<Geometry>,
 }
 
-impl<T> BVH<T>
-where
-    T: Shape,
+impl BVH
 {
-    pub fn new(geometry: Vec<T>) -> Self {
+    pub fn new(geometry: Vec<Geometry>) -> Self {
         BVH {
             geometry: e_BVH::unanimated(8, geometry),
         }
@@ -29,11 +25,13 @@ where
             geometry: e_BVH::empty(),
         }
     }
+
+    pub fn intersect(&self, ray : &mut Ray) -> Option<SurfaceHit> {
+        self.geometry.intersect(ray, |r, i| i.intersect_geometry(r))
+    }
 }
 
-impl<T> Boundable for BVH<T>
-where
-    T: Shape,
+impl Boundable for BVH
 {
     #[inline]
     fn bounds(&self, a: f32, b: f32) -> BBox {
@@ -41,17 +39,8 @@ where
     }
 }
 
-impl<T> Intersectable for BVH<T>
-where
-    T: Shape,
-{
-    #[inline]
-    fn intersect(&self, mut ray: &mut Ray) -> Option<Surface> {
-        self.geometry.intersect(&mut ray, |r, i| i.intersect(r))
-    }
-}
 
-impl<'a> RayT for &'a mut Ray {
+impl RayT for Ray {
     #[inline]
     fn direction(&self) -> Vector {
         self.direction.into()
@@ -73,8 +62,8 @@ impl<'a> RayT for &'a mut Ray {
     }
 }
 
-pub trait Shape: Intersectable + Boundable + 'static {}
-impl<T> Shape for T where T: Intersectable + Boundable + 'static {}
+pub trait Shape: Intersectable + Boundable  {}
+impl<T> Shape for T where T: Intersectable + Boundable  {}
 
 pub struct Geometry {
     pub shape: Box<dyn Shape>,
@@ -82,22 +71,20 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn new(obj: impl Shape, material: Box<dyn _Material>) -> Geometry {
+    pub fn new(obj: Box<dyn Shape>, material: Box<dyn _Material>) -> Geometry {
         Geometry {
-            shape: Box::new(obj),
+            shape: obj,
             material,
         }
     }
-}
 
-impl Intersectable for Geometry {
     #[inline]
-    fn intersect(&self, ray: &mut Ray) -> Option<Surface> {
-        if let Some(mut surface) = self.shape.intersect(ray) {
-            surface.material = Some(&*self.material);
-            return Some(surface);
+    fn intersect_geometry(&self, mut ray: &mut Ray) -> Option<SurfaceHit> {
+        if let Some(surface) = self.shape.intersect(&mut ray) {
+            Some(SurfaceHit { material : self.material.as_ref(), surface })
+        } else {
+            None
         }
-        None
     }
 }
 

@@ -5,10 +5,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
-pub struct Surface<'a> {
+pub struct Surface {
     pub position: Vec3,
     pub normal: Vec3,
-    pub material: Option<&'a dyn _Material>,
     pub uv: Vec2,
     pub dpdu: Vec3,
     pub dpdv: Vec3, // world space / texture space
@@ -22,13 +21,18 @@ pub struct Surface<'a> {
     pub dvdy: f64, // texture space / screen space y
 }
 
-impl Default for Surface<'static> {
-    fn default() -> Surface<'static> {
+#[derive(Debug, Clone)]
+pub struct SurfaceHit<'a> {
+    pub material: &'a dyn _Material,
+    pub surface: Surface
+}
+
+impl Default for Surface {
+    fn default() -> Surface {
         Surface {
             position: Vec3::zero(),
             normal: Vec3::new(0., 1., 0.),
             uv: Vec2::from([0., 0.]),
-            material: None,
             dpdu: Vec3::zero(), //How much does the world position change pr. uv-coodinate
             dpdv: Vec3::zero(),
             dpdx: Vec3::zero(), //How much does the world position AT AN INTERSECTION change wrt. a given camera ray.
@@ -43,8 +47,8 @@ impl Default for Surface<'static> {
     }
 }
 
-impl Surface<'_> {
-    pub fn new(position: Vec3, normal: Vec3) -> Surface<'static> {
+impl Surface {
+    pub fn new(position: Vec3, normal: Vec3) -> Surface {
         Surface {
             position,
             normal,

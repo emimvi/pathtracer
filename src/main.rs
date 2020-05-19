@@ -42,10 +42,12 @@ fn sample_cosine_weighted_hemisphere(normal: &Vec3) -> Vec3 {
         sin_theta * f64::cos(phi),
         sin_theta * f64::sin(phi),
         cos_theta,
-    );
+        );
 
     spherical_direction.rotate_to(normal)
+
 }
+
 pub fn shade(surface: &Surface, incident_ray: &Ray, scene: &Scene, trace_depth: usize) -> Vec3 {
     Vec3::zero()
 }
@@ -290,7 +292,7 @@ pub fn render(x: f64, y: f64, pixel_delta_x: f64, pixel_delta_y: f64, scene: &Sc
     while bounces <= CONFIG.bounces {
         bounces += 1;
 
-        let surface = if let Some(surf) = scene.trace_closest(&mut trace_ray) {
+        let surfaceHit = if let Some(surf) = scene.trace_closest(&mut trace_ray) {
             surf
         } else {
             //Add background light and return
@@ -298,7 +300,8 @@ pub fn render(x: f64, y: f64, pixel_delta_x: f64, pixel_delta_y: f64, scene: &Sc
             return color_result;
         };
 
-        let material = surface.material.unwrap();
+        let material = surfaceHit.material;
+        let surface = surfaceHit.surface;
 
         //Add emitted light
         color_result += accumulated_pdf * material.get_emission();
@@ -336,12 +339,12 @@ lazy_static! {
                              -r                   'Use roughness based heuristic'
                              --no-diffs            'Disable ray differentials'
                              ",
-            )
+                             )
             .get_matches();
 
         let dim = value_t!(matches, "dim", usize).unwrap_or(512);
         let samples_pr_pixel = value_t!(matches, "samples", usize).unwrap_or(8);
-        let bounces = value_t!(matches, "b", usize).unwrap_or(30);
+        let bounces = value_t!(matches, "b", usize).unwrap_or(2);
         let diff_size = value_t!(matches, "diff", f64).unwrap_or(0.0);
         let diff_string = diff_size.to_string().replace(".", "");
         let use_diffs = !matches.is_present("no-diffs");
@@ -361,7 +364,7 @@ lazy_static! {
             },
             bounces,
             roughdiff_str
-        );
+            );
 
         Config {
             dim,
@@ -386,47 +389,51 @@ fn main() {
     //let scene = Scene::glossy_planes();
     //let scene = Scene::quad();
 
-    let mut window = Window::new("Test - ESC to exit", w, h, WindowOptions::default())
-        .unwrap_or_else(|e| {
-            panic!("{}", e);
-        });
+    {
+        let mut window = Window::new("Test - ESC to exit", w, h, WindowOptions::default())
+            .unwrap_or_else(|e| {
+                panic!("{}", e);
+            });
 
-    let mut pixels: Vec<Vec3> = vec![Vec3::zero(); h * w];
-    let mut iteration = 1;
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
-        let jitters: Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
-            .iter()
-            .map(|&(dx, dy)| (dx * pixel_size_x, dy * pixel_size_y))
-            .collect();
+        let mut pixels: Vec<Vec3> = vec![Vec3::zero(); h * w];
+        let mut iteration = 1;
+        while window.is_open() && !window.is_key_down(Key::Escape) {
+            //Generate jitter subsamples in range (0,1), and scale it to the pixelsize.
+            let jitters: Vec<(f64, f64)> = generate_jitter(samples_per_pixel)
+                .iter()
+                .map(|&(dx, dy)| (dx * pixel_size_x, dy * pixel_size_y))
+                .collect();
 
-        let next: Vec<Vec3> = (0..h * w)
-            .into_par_iter()
-            .map(|i| {
-                let x = i % w; // x = 0..width
-                let y = i / h; // y = 0..height
-                let pixel_ndc_x = ((x as f64) + 0.5) / w as f64; //0..1, starting at top left.
-                let pixel_ndc_y = ((y as f64) + 0.5) / h as f64; //0..1, starting at top left.
-                let pixel_ss_x = 2. * pixel_ndc_x - 1.; //  -1..1, starting at bottom left.
-                let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
+            let t : Vec<usize> = (0..32).collect();
 
-                let pixel_result = jitters.iter().fold(Vec3::zero(), |sum, &(dx, dy)| {
-                    sum + render(
-                        pixel_ss_x + dx,
-                        pixel_ss_y + dy,
-                        2. * pixel_size_x,
-                        2. * pixel_size_y,
-                        &scene,
-                    )
-                });
+            let next = (0..h * w).collect::<Vec<usize>>().par_chunks(32)
+                .map(|c : &[usize]| {
+                    c.iter().map(|i : &usize| {
+                        let x = i % w; // x = 0..width
+                        let y = i / h; // y = 0..height
+                        let pixel_ndc_x = ((x as f64) + 0.5) / w as f64; //0..1, starting at top left.
+                        let pixel_ndc_y = ((y as f64) + 0.5) / h as f64; //0..1, starting at top left.
+                        let pixel_ss_x = 2. * pixel_ndc_x - 1.; //  -1..1, starting at bottom left.
+                        let pixel_ss_y = 1. - 2. * pixel_ndc_y; //  -1..1, starting at bottom left.
 
-                pixel_result / jitters.len() as f64
-            })
-            .collect();
+                        let pixel_result = jitters.iter().fold(Vec3::zero(), |sum, &(dx, dy)| {
+                            sum + render(
+                                pixel_ss_x + dx,
+                                pixel_ss_y + dy,
+                                2. * pixel_size_x,
+                                2. * pixel_size_y,
+                                &scene,
+                                )
+                        });
 
-        for i in 0..pixels.len() {
-            pixels[i] += next[i];
-        }
+                        pixel_result / jitters.len() as f64
+                    }).collect::<Vec<Vec3>>()
+                })
+            .flatten().collect::<Vec<Vec3>>();
+
+            for i in 0..pixels.len() {
+                pixels[i] += next[i];
+            }
         // let image = Image {
         //     height : h,
         //     width: w,
@@ -439,9 +446,10 @@ fn main() {
 
         // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
         window
-            .update_with_buffer(&get_raw_pixels_u32(&pixels, iteration))
+            .update_with_buffer(&get_raw_pixels_u32(&pixels, iteration), w, h)
             .unwrap();
         iteration += 1;
+        }
     }
 }
 
@@ -455,7 +463,7 @@ pub fn get_raw_pixels_u32(pixels: &[Vec3], iteration: u32) -> Vec<u32> {
             let b = u32::from(Image::f64_to_8bit_color(vec3.z * denom));
             (r << 16 | g << 8 | b)
         })
-        .collect()
+    .collect()
 }
 
 fn generate_jitter(num_samples: usize) -> Vec<(f64, f64)> {
@@ -464,9 +472,9 @@ fn generate_jitter(num_samples: usize) -> Vec<(f64, f64)> {
     for i in 0..num_samples {
         for j in 0..num_samples {
             jitters.push((
-                step * (rand::random::<f64>() + i as f64) - 1. / 2.,
-                step * (rand::random::<f64>() + j as f64) - 1. / 2.,
-            ));
+                    step * (rand::random::<f64>() + i as f64) - 1. / 2.,
+                    step * (rand::random::<f64>() + j as f64) - 1. / 2.,
+                    ));
         }
     }
     jitters

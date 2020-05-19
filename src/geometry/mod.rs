@@ -2,7 +2,7 @@ pub mod ray;
 pub use self::ray::*;
 
 pub mod surface;
-pub use self::surface::Surface;
+pub use self::surface::{Surface, SurfaceHit};
 
 pub mod triangle_mesh;
 pub use self::triangle_mesh::*;
@@ -13,7 +13,7 @@ use std::f64;
 
 use bvh::*;
 
-pub trait Intersectable: Sync {
+pub trait Intersectable : Sync {
     fn intersect(&self, ray: &mut Ray) -> Option<Surface>;
 }
 

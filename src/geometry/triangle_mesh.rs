@@ -7,11 +7,11 @@ use mipmap::*;
 use rand;
 use std::path::Path;
 
-use bvh::{BBox, Boundable, Geometry, BVH};
+use bvh::{BBox, Boundable, Geometry, e_BVH};
 
 pub struct TriMesh {
     vertices: Vec<Vec3>,
-    faces: BVH<Triangle>,
+    faces: e_BVH<Triangle>,
     texture_coordinates: Option<Vec<Vec2>>,
 }
 
@@ -19,13 +19,13 @@ unsafe impl Send for Triangle {}
 unsafe impl Sync for Triangle {}
 pub struct Triangle {
     parent: *const TriMesh,
-    face: [usize; 3],
+    face: [usize; 3]
 }
 
-impl Intersectable for Box<TriMesh> {
+impl Intersectable for TriMesh {
     #[inline]
     fn intersect(&self, ray: &mut Ray) -> Option<Surface> {
-        self.faces.intersect(ray)
+        self.faces.intersect(ray, |r, i| i.intersect(r))
     }
 }
 
@@ -37,11 +37,11 @@ impl TriMesh {
     ) -> Box<TriMesh> {
         let mut mesh = Box::new(TriMesh {
             vertices,
-            faces: BVH::empty(),
+            faces: e_BVH::empty(),
             texture_coordinates,
         });
         {
-            let bvh = BVH::new({
+            let bvh = e_BVH::unanimated(8, {
                 faces
                     .iter()
                     .map(|face| Triangle {
@@ -57,7 +57,7 @@ impl TriMesh {
     }
 }
 
-impl Boundable for Box<TriMesh> {
+impl Boundable for TriMesh {
     fn bounds(&self, _a: f32, _b: f32) -> BBox {
         self.faces.bounds(_a, _b)
     }
